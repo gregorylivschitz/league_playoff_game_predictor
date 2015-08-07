@@ -6,46 +6,45 @@ from datetime import datetime
 # How to install pandas: https://gist.github.com/fyears/7601881
 import pandas
 import numpy
-from sklearn import linear_model, datasets
+from sklearn import linear_model
 import requests
 
+def predict_on_model():
+    logreg = train_model()
+    real_array = numpy.array([[64, 39, 149, 19216, -45577]])
+    print('logistical regression outcome is: {}'.format(logreg.predict(real_array)))
+    print('logistical regression probability is: {}'.format(logreg.predict_proba(real_array)))
 
-def train_and_predict():
+def train_model():
     #6110 6200
-    games_eu = get_predictors(6074, 6163, '225', 'reverse')
-    games_na = get_predictors(6164, 6253, '226', 'normal')
+    games_eu = get_predictors(6074, 6090, '225')
+    games_na = get_predictors(6164, 6180, '226')
     regions = [('na', games_na), ('eu', games_eu)]
     logreg = linear_model.LogisticRegression()
     key_stats = ['kills', 'deaths', 'assists', 'minions_killed', 'total_gold', 'gpm']
-
     game_list = []
+    y_array_list = []
     for region_type, region in regions:
         for game in region:
             if game['csum_prev_total_gold'] != 0 and game['csum_prev_minions_killed'] != 0:
                 games_predictors = [game['csum_prev_kills'], game['csum_prev_deaths'], game['csum_prev_assists'],
                                     game['csum_prev_minions_killed'], game['csum_prev_total_gold']]
                 game_list.append(games_predictors)
-        if region_type == 'na':
-            len_na_game_list = len(game_list)
-            y_array_na = numpy.ones((len(game_list), 1), dtype=numpy.int)
-        elif region_type == 'eu':
-            y_array_eu = numpy.zeros((len(game_list) - len_na_game_list, 1), dtype=numpy.int)
+                y_array_list.append(game['y_element'])
     predictors = numpy.array(game_list)
-    y_array = numpy.concatenate([y_array_na, y_array_eu])
+    y_array = numpy.array(y_array_list)
     print("predictors is: {}".format(predictors))
     print("y array is: {}".format(y_array))
     y_1darray = numpy.squeeze(y_array)
     logreg.fit(predictors, y_1darray)
-    real_array = numpy.array([[64, 39, 149, 19216, -45577]])
-    print('logistical regression predicted the teams chance to win is: {}'.format(logreg.predict(real_array)))
+    return logreg
 
 
-
-def get_predictors(begin_game, end_game, tournament_id, type_training):
+def get_predictors(begin_game, end_game, tournament_id):
     team_stats_df = get_team_stats_in_dataframe(begin_game, end_game, tournament_id)
     # print(team_stats_df)
-    #team_stats_df.drop(team_stats_df.columns[[0, 1,  3, 4, 6, 8]], axis=1, inplace=True)
-    team_stats_df = team_stats_df.sort(['team_id'])
+    # team_stats_df.drop(team_stats_df.columns[[0, 1,  3, 4, 6, 8]], axis=1, inplace=True)
+    team_stats_df = team_stats_df.sort(['game_id','team_id'])
     key_stats = ['kills', 'deaths', 'assists', 'minions_killed', 'total_gold', 'game_length_minutes']
     for key_stat in key_stats:
         team_stats_df['csum_{}'.format(key_stat)] = team_stats_df.groupby(by='team_id')[key_stat].cumsum()
@@ -58,31 +57,32 @@ def get_predictors(begin_game, end_game, tournament_id, type_training):
     # print(team_records)
     game_stats_predictors = []
     for team_index in range(0, len(team_records), 2):
-        if team_records[team_index]['won']:
-            winning_team = team_records[team_index]
-            losing_team = team_records[team_index + 1]
+        if team_records[team_index]['color'] == 'blue' and team_records[team_index + 1]['color'] == 'red':
+            blue_team = team_records[team_index]
+            red_team = team_records[team_index + 1]
+        elif team_records[team_index]['color'] == 'red' and team_records[team_index + 1]['color'] == 'blue':
+            red_team = team_records[team_index]
+            blue_team = team_records[team_index + 1]
         else:
-            winning_team = team_records[team_index + 1]
-            losing_team = team_records[team_index]
-        if winning_team['game_id'] != losing_team['game_id']:
+            raise Exception("Need both a blue and a red team in the game")
+        if blue_team['game_id'] != red_team['game_id']:
             raise Exception('Huge problem game_id''s for teams did not match winnging_team game_id: {} '
-                            'losing_team game_id: {}'.format(winning_team, losing_team))
+                            'losing_team game_id: {}'.format(blue_team, red_team))
         key_stats = ['kills', 'deaths', 'assists', 'minions_killed', 'total_gold', 'gpm']
         game_stat_predictor_dict = {}
         for key_stat in key_stats:
             # print('winning team: ' + str(winning_team['csum_prev_{}'.format(key_stat)]))
             # print('losing team: ' + str(losing_team['csum_prev_{}'.format(key_stat)]))
-            if type_training == 'normal':
-                print('normal')
-                game_stat_predictor_dict['csum_prev_{}'.format(key_stat)] = winning_team['csum_prev_{}'.
-                    format(key_stat)] - losing_team['csum_prev_{}'.format(key_stat)]
-            elif type_training == 'reverse':
-                print('reverse')
-                game_stat_predictor_dict['csum_prev_{}'.format(key_stat)] = losing_team['csum_prev_{}'.
-                    format(key_stat)] - winning_team['csum_prev_{}'.format(key_stat)]
+            game_stat_predictor_dict['csum_prev_{}'.format(key_stat)] = red_team['csum_prev_{}'.
+                format(key_stat)] - blue_team['csum_prev_{}'.format(key_stat)]
             # print('subtracted: ' + str(game_stat_predictor_dict['csum_prev_{}'.format(key_stat)]))
-        game_stat_predictor_dict['game_id'] = winning_team['game_id']
+        game_stat_predictor_dict['game_id'] = red_team['game_id']
+        if red_team['won']:
+            game_stat_predictor_dict['y_element'] = 1
+        elif blue_team['won']:
+            game_stat_predictor_dict['y_element'] = 0
         game_stats_predictors.append(game_stat_predictor_dict)
+        print("processing team")
     # print(game_stats_predictors)
     return game_stats_predictors
 
@@ -102,35 +102,26 @@ def get_team_stats_in_dataframe(begin_game, end_game, tournament_id):
     sorted_list_of_games = sorted(list_of_games, key=itemgetter('dateTime'))
     x = 0
     for game in sorted_list_of_games:
-        winning_team_id = game['winnerId']
-        losing_team_id = None
-        red_team = game['contestants']['red']
-        blue_team = game['contestants']['blue']
-        if red_team['id'] == winning_team_id:
-            winning_team_name = red_team['name']
-            losing_team_name = blue_team['name']
-            losing_team_id = blue_team['id']
-        else:
-            losing_team_id = red_team['id']
-            winning_team_name = blue_team['name']
-            losing_team_name = red_team['name']
+        blue_team_id = game['contestants']['blue']['id']
+        red_team_id = game['contestants']['red']['id']
+        winner_id = game['winnerId']
         if game != ['Entity not found'] and game['tournament']['id'] == tournament_id:
-            winning_team, losing_team = convert_league_stats_to_team_stats(game, winning_team_id, losing_team_id)
-            winning_team_df = pandas.DataFrame(winning_team, index=[x])
-            losing_team_df = pandas.DataFrame(losing_team, index=[x + 1])
+            blue_team, red_team = convert_league_stats_to_team_stats(game, winner_id, blue_team_id, red_team_id)
+            blue_team_df = pandas.DataFrame(blue_team, index=[x])
+            red_team_df = pandas.DataFrame(red_team, index=[x + 1])
             x += 2
             if team_stats_df is None:
-                team_stats_df = winning_team_df.append(losing_team_df)
+                team_stats_df = blue_team_df.append(red_team_df)
             else:
-                team_stats_df = team_stats_df.append(winning_team_df.append(losing_team_df))
+                team_stats_df = team_stats_df.append(blue_team_df.append(red_team_df))
     return team_stats_df
 
-def convert_league_stats_to_team_stats(game, winning_team_id, losing_team_id):
-    winning_team = {}
-    losing_team = {}
+def convert_league_stats_to_team_stats(game, winner_id, blue_team_id, red_team_id):
+    blue_team = {}
+    red_team = {}
     min_played = game['gameLength']/60
-    winning_team_count = 0
-    losing_team_count = 0
+    blue_team_count = 0
+    red_team_count = 0
     for player_index in range(0, 10):
         j_player_stats = game['players']['player{}'.format(player_index)]
         team_id_of_player = j_player_stats['teamId']
@@ -144,29 +135,37 @@ def convert_league_stats_to_team_stats(game, winning_team_id, losing_team_id):
         gpm = total_gold/min_played
         key_stats = {'kills': kills, 'deaths': deaths, 'assists': assits,
                      'minions_killed': minions_killed, 'total_gold': total_gold}
-        if int(winning_team_id) == team_id_of_player:
-            winning_team_count += 1
+        if int(blue_team_id) == team_id_of_player:
+            blue_team_count += 1
             for key_stat, value_stat in key_stats.items():
                 # pythonic way to do dictionary get a dictionary with a default value
                 # if it doesn't exist assign 1 if it does add 1.
-                winning_team[key_stat] = winning_team.setdefault(key_stat, 0) + value_stat
-        elif int(losing_team_id) == team_id_of_player:
-            losing_team_count += 1
+                blue_team[key_stat] = blue_team.setdefault(key_stat, 0) + value_stat
+        elif int(red_team_id) == team_id_of_player:
+            red_team_count += 1
             for key_stat, value_stat in key_stats.items():
-                losing_team[key_stat] = losing_team.get(key_stat, 0) + value_stat
-    winning_team['game_id'] = game['game_id']
-    losing_team['game_id'] = game['game_id']
-    winning_team['team_id'] = int(winning_team_id)
-    losing_team['team_id'] = int(losing_team_id)
-    winning_team['game_length_minutes'] = game['gameLength']/60
-    losing_team['game_length_minutes'] = game['gameLength']/60
-    winning_team['won'] = True
-    losing_team['won'] = False
-    return winning_team, losing_team
+                red_team[key_stat] = red_team.get(key_stat, 0) + value_stat
+    blue_team['game_id'] = game['game_id']
+    red_team['game_id'] = game['game_id']
+    blue_team['team_id'] = int(blue_team_id)
+    red_team['team_id'] = int(red_team_id)
+    blue_team['game_length_minutes'] = game['gameLength']/60
+    red_team['game_length_minutes'] = game['gameLength']/60
+    blue_team['color'] = 'blue'
+    red_team['color'] = 'red'
+    if winner_id == blue_team_id:
+        blue_team['won'] = True
+        red_team['won'] = False
+    elif winner_id == red_team_id:
+        blue_team['won'] = False
+        red_team['won'] = True
+    else:
+        raise Exception("This is no winning team please check data!")
+    return blue_team, red_team
 
 
 def main():
-    train_and_predict()
+    predict_on_model()
 
 if __name__ == "__main__":
     main()
