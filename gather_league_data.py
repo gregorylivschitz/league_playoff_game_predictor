@@ -11,25 +11,39 @@ import requests
 
 
 def train_and_predict():
-    predictors = get_predictors()
+    #6110 6200
+    games_eu = get_predictors(6074, 6163, '225', 'reverse')
+    games_na = get_predictors(6164, 6253, '226', 'normal')
+    regions = [('na', games_na), ('eu', games_eu)]
     logreg = linear_model.LogisticRegression()
     key_stats = ['kills', 'deaths', 'assists', 'minions_killed', 'total_gold', 'gpm']
 
-    for predictor in predictors:
-        if predictor['csum_prev_total_gold'] != 0 and predictor['csum_prev_minions_killed'] != 0:
-            predict_array = numpy.asarray([predictor['csum_prev_kills'], predictor['csum_prev_deaths'],
-                        predictor['csum_prev_assists'], predictor['csum_prev_minions_killed'],
-                        predictor['csum_prev_total_gold']])
-            y_array = numpy.array([0, 1])
-            logreg.fit(predict_array, y_array)
+    game_list = []
+    for region_type, region in regions:
+        for game in region:
+            if game['csum_prev_total_gold'] != 0 and game['csum_prev_minions_killed'] != 0:
+                games_predictors = [game['csum_prev_kills'], game['csum_prev_deaths'], game['csum_prev_assists'],
+                                    game['csum_prev_minions_killed'], game['csum_prev_total_gold']]
+                game_list.append(games_predictors)
+        if region_type == 'na':
+            len_na_game_list = len(game_list)
+            y_array_na = numpy.ones((len(game_list), 1), dtype=numpy.int)
+        elif region_type == 'eu':
+            y_array_eu = numpy.zeros((len(game_list) - len_na_game_list, 1), dtype=numpy.int)
+    predictors = numpy.array(game_list)
+    y_array = numpy.concatenate([y_array_na, y_array_eu])
+    print("predictors is: {}".format(predictors))
+    print("y array is: {}".format(y_array))
+    y_1darray = numpy.squeeze(y_array)
+    logreg.fit(predictors, y_1darray)
     real_array = numpy.array([[64, 39, 149, 19216, -45577]])
-    print(logreg.predict(real_array))
+    print('logistical regression predicted the teams chance to win is: {}'.format(logreg.predict(real_array)))
 
 
 
-def get_predictors():
-    team_stats_df = get_team_stats_in_dataframe()
-    #print(team_stats_df)
+def get_predictors(begin_game, end_game, tournament_id, type_training):
+    team_stats_df = get_team_stats_in_dataframe(begin_game, end_game, tournament_id)
+    # print(team_stats_df)
     #team_stats_df.drop(team_stats_df.columns[[0, 1,  3, 4, 6, 8]], axis=1, inplace=True)
     team_stats_df = team_stats_df.sort(['team_id'])
     key_stats = ['kills', 'deaths', 'assists', 'minions_killed', 'total_gold', 'game_length_minutes']
@@ -58,8 +72,14 @@ def get_predictors():
         for key_stat in key_stats:
             # print('winning team: ' + str(winning_team['csum_prev_{}'.format(key_stat)]))
             # print('losing team: ' + str(losing_team['csum_prev_{}'.format(key_stat)]))
-            game_stat_predictor_dict['csum_prev_{}'.format(key_stat)] = winning_team['csum_prev_{}'.
-                format(key_stat)] - losing_team['csum_prev_{}'.format(key_stat)]
+            if type_training == 'normal':
+                print('normal')
+                game_stat_predictor_dict['csum_prev_{}'.format(key_stat)] = winning_team['csum_prev_{}'.
+                    format(key_stat)] - losing_team['csum_prev_{}'.format(key_stat)]
+            elif type_training == 'reverse':
+                print('reverse')
+                game_stat_predictor_dict['csum_prev_{}'.format(key_stat)] = losing_team['csum_prev_{}'.
+                    format(key_stat)] - winning_team['csum_prev_{}'.format(key_stat)]
             # print('subtracted: ' + str(game_stat_predictor_dict['csum_prev_{}'.format(key_stat)]))
         game_stat_predictor_dict['game_id'] = winning_team['game_id']
         game_stats_predictors.append(game_stat_predictor_dict)
@@ -67,11 +87,12 @@ def get_predictors():
     return game_stats_predictors
 
 
-def get_team_stats_in_dataframe():
+def get_team_stats_in_dataframe(begin_game, end_game, tournament_id):
     list_of_games = []
     team_stats_df = None
     # 6164, 6253
-    for game_id in range(6164, 6190):
+    # 6074, 6163
+    for game_id in range(begin_game, end_game):
         response = requests.get('http://na.lolesports.com:80/api/game/{}.json'.format(game_id))
         game_league = response.text
         j_game_league = json.loads(game_league)
@@ -93,7 +114,7 @@ def get_team_stats_in_dataframe():
             losing_team_id = red_team['id']
             winning_team_name = blue_team['name']
             losing_team_name = red_team['name']
-        if game != ['Entity not found'] and game['tournament']['id'] == '226':
+        if game != ['Entity not found'] and game['tournament']['id'] == tournament_id:
             winning_team, losing_team = convert_league_stats_to_team_stats(game, winning_team_id, losing_team_id)
             winning_team_df = pandas.DataFrame(winning_team, index=[x])
             losing_team_df = pandas.DataFrame(losing_team, index=[x + 1])
