@@ -1,3 +1,5 @@
+import math
+
 __author__ = 'Greg'
 
 import json
@@ -11,24 +13,25 @@ import requests
 
 def predict_on_model():
     logreg = train_model()
-    real_array = numpy.array([[64, 39, 149, 19216, -45577]])
+    # CLG vs TIP
+    real_array = numpy.array([[-0.341912, -9.095588, -4.566176, 14.077206, 456.878676]])
     print('logistical regression outcome is: {}'.format(logreg.predict(real_array)))
     print('logistical regression probability is: {}'.format(logreg.predict_proba(real_array)))
 
 def train_model():
-    #6110 6200
-    games_eu = get_predictors(6074, 6090, '225')
-    games_na = get_predictors(6164, 6180, '226')
+    # 6164, 6253
+    # 6074, 6163
+    games_eu = get_predictors(6074, 6163, '225')
+    games_na = get_predictors(6164, 6253, '226')
     regions = [('na', games_na), ('eu', games_eu)]
     logreg = linear_model.LogisticRegression()
-    key_stats = ['kills', 'deaths', 'assists', 'minions_killed', 'total_gold', 'gpm']
     game_list = []
     y_array_list = []
     for region_type, region in regions:
         for game in region:
-            if game['csum_prev_total_gold'] != 0 and game['csum_prev_minions_killed'] != 0:
-                games_predictors = [game['csum_prev_kills'], game['csum_prev_deaths'], game['csum_prev_assists'],
-                                    game['csum_prev_minions_killed'], game['csum_prev_total_gold']]
+            if not (numpy.isnan(game['csum_prev_avg_total_gold']) and numpy.isnan(game['csum_prev_avg_minions_killed'])):
+                games_predictors = [game['csum_prev_avg_kills'], game['csum_prev_avg_deaths'], game['csum_prev_avg_assists'],
+                                    game['csum_prev_avg_minions_killed'], game['csum_prev_avg_total_gold']]
                 game_list.append(games_predictors)
                 y_array_list.append(game['y_element'])
     predictors = numpy.array(game_list)
@@ -42,19 +45,23 @@ def train_model():
 
 def get_predictors(begin_game, end_game, tournament_id):
     team_stats_df = get_team_stats_in_dataframe(begin_game, end_game, tournament_id)
-    # print(team_stats_df)
-    # team_stats_df.drop(team_stats_df.columns[[0, 1,  3, 4, 6, 8]], axis=1, inplace=True)
-    team_stats_df = team_stats_df.sort(['game_id','team_id'])
-    key_stats = ['kills', 'deaths', 'assists', 'minions_killed', 'total_gold', 'game_length_minutes']
+    team_stats_df = team_stats_df.sort(['game_id', 'team_id'])
+    key_stats = ['game_number', 'kills', 'deaths', 'assists', 'minions_killed', 'total_gold', 'game_length_minutes']
     for key_stat in key_stats:
         team_stats_df['csum_{}'.format(key_stat)] = team_stats_df.groupby(by='team_id')[key_stat].cumsum()
         team_stats_df['csum_prev_{}'.format(key_stat)] = team_stats_df['csum_{}'.format(key_stat)] - team_stats_df[key_stat]
+        team_stats_df['csum_prev_avg_{}'.format(key_stat)] = \
+            team_stats_df['csum_prev_{}'.format(key_stat)] / team_stats_df['csum_prev_game_number']
     team_stats_df['gpm'] = team_stats_df['total_gold'] / team_stats_df['game_length_minutes']
     team_stats_df['csum_gpm'] = team_stats_df['csum_total_gold'] / team_stats_df['csum_game_length_minutes']
     team_stats_df['csum_prev_gpm'] = team_stats_df['csum_prev_total_gold'] / team_stats_df['csum_prev_game_length_minutes']
     team_stats_df = team_stats_df.sort(['game_id'])
+    audit_team_stats_df = team_stats_df[['game_id', 'team_id', 'csum_prev_avg_kills', 'csum_prev_avg_deaths',
+                                         'csum_prev_avg_assists', 'csum_prev_avg_minions_killed',
+                                         'csum_prev_avg_total_gold', 'csum_prev_gpm']]
+
+    print(audit_team_stats_df[audit_team_stats_df['team_id'] == 2])
     team_records = team_stats_df.to_dict('records')
-    # print(team_records)
     game_stats_predictors = []
     for team_index in range(0, len(team_records), 2):
         if team_records[team_index]['color'] == 'blue' and team_records[team_index + 1]['color'] == 'red':
@@ -68,14 +75,11 @@ def get_predictors(begin_game, end_game, tournament_id):
         if blue_team['game_id'] != red_team['game_id']:
             raise Exception('Huge problem game_id''s for teams did not match winnging_team game_id: {} '
                             'losing_team game_id: {}'.format(blue_team, red_team))
-        key_stats = ['kills', 'deaths', 'assists', 'minions_killed', 'total_gold', 'gpm']
+        key_stats = ['kills', 'deaths', 'assists', 'minions_killed', 'total_gold']
         game_stat_predictor_dict = {}
         for key_stat in key_stats:
-            # print('winning team: ' + str(winning_team['csum_prev_{}'.format(key_stat)]))
-            # print('losing team: ' + str(losing_team['csum_prev_{}'.format(key_stat)]))
-            game_stat_predictor_dict['csum_prev_{}'.format(key_stat)] = red_team['csum_prev_{}'.
-                format(key_stat)] - blue_team['csum_prev_{}'.format(key_stat)]
-            # print('subtracted: ' + str(game_stat_predictor_dict['csum_prev_{}'.format(key_stat)]))
+            game_stat_predictor_dict['csum_prev_avg_{}'.format(key_stat)] = red_team['csum_prev_avg_{}'.
+                format(key_stat)] - blue_team['csum_prev_avg_{}'.format(key_stat)]
         game_stat_predictor_dict['game_id'] = red_team['game_id']
         if red_team['won']:
             game_stat_predictor_dict['y_element'] = 1
@@ -83,15 +87,12 @@ def get_predictors(begin_game, end_game, tournament_id):
             game_stat_predictor_dict['y_element'] = 0
         game_stats_predictors.append(game_stat_predictor_dict)
         print("processing team")
-    # print(game_stats_predictors)
     return game_stats_predictors
 
 
 def get_team_stats_in_dataframe(begin_game, end_game, tournament_id):
     list_of_games = []
     team_stats_df = None
-    # 6164, 6253
-    # 6074, 6163
     for game_id in range(begin_game, end_game):
         response = requests.get('http://na.lolesports.com:80/api/game/{}.json'.format(game_id))
         game_league = response.text
@@ -153,6 +154,8 @@ def convert_league_stats_to_team_stats(game, winner_id, blue_team_id, red_team_i
     red_team['game_length_minutes'] = game['gameLength']/60
     blue_team['color'] = 'blue'
     red_team['color'] = 'red'
+    blue_team['game_number'] = 1
+    red_team['game_number'] = 1
     if winner_id == blue_team_id:
         blue_team['won'] = True
         red_team['won'] = False
