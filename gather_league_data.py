@@ -11,36 +11,40 @@ import numpy
 from sklearn import linear_model
 import requests
 
-def predict_on_model():
-    logreg = train_model()
+def predict_on_model(logreg):
     # CLG vs TIP
-    real_array = numpy.array([[-0.341912, -9.095588, -4.566176, 14.077206, 456.878676]])
+    real_array = numpy.array([[-0.341912, -9.095588, -4.566176, 14.077206, 456.878676, -44.019292]])
     print('logistical regression outcome is: {}'.format(logreg.predict(real_array)))
     print('logistical regression probability is: {}'.format(logreg.predict_proba(real_array)))
 
-def train_model():
-    # 6164, 6253
-    # 6074, 6163
-    games_eu = get_predictors(6074, 6163, '225')
-    games_na = get_predictors(6164, 6253, '226')
-    regions = [('na', games_na), ('eu', games_eu)]
+def train_model(predictors, y_array):
+    print('the predictors are {}'.format(predictors))
+    print('the y_array is {}'.format(y_array))
     logreg = linear_model.LogisticRegression()
-    game_list = []
-    y_array_list = []
-    for region_type, region in regions:
-        for game in region:
-            if not (numpy.isnan(game['csum_prev_avg_total_gold']) and numpy.isnan(game['csum_prev_avg_minions_killed'])):
-                games_predictors = [game['csum_prev_avg_kills'], game['csum_prev_avg_deaths'], game['csum_prev_avg_assists'],
-                                    game['csum_prev_avg_minions_killed'], game['csum_prev_avg_total_gold']]
-                game_list.append(games_predictors)
-                y_array_list.append(game['y_element'])
-    predictors = numpy.array(game_list)
-    y_array = numpy.array(y_array_list)
-    print("predictors is: {}".format(predictors))
-    print("y array is: {}".format(y_array))
     y_1darray = numpy.squeeze(y_array)
     logreg.fit(predictors, y_1darray)
     return logreg
+
+
+def get_predictors_in_numpy_arrays(begin_game, end_game, tournament_id):
+    # games_eu = get_predictors(begin_game, end_game, tournament_id)
+    # games_na = get_predictors(begin_game, end_game, tournament_id)
+    # regions = [('na', games_na), ('eu', games_eu)]
+    games = get_predictors(begin_game, end_game, tournament_id)
+    game_list = []
+    y_array_list = []
+    for game in games:
+        if not (numpy.isnan(game['csum_prev_avg_total_gold']) and numpy.isnan(game['csum_prev_avg_minions_killed'])):
+            games_predictors = [game['csum_prev_avg_kills'], game['csum_prev_avg_deaths'], game['csum_prev_avg_assists'],
+                                game['csum_prev_avg_minions_killed'], game['csum_prev_avg_total_gold'], game['csum_prev_gpm']]
+            game_list.append(games_predictors)
+            y_array_list.append(game['y_element'])
+    predictors = numpy.array(game_list)
+    y_array = numpy.array([y_array_list])
+    # print("predictors is: {}".format(predictors))
+    # print("y array is: {}".format(y_array))
+    return (predictors, y_array)
+
 
 
 def get_predictors(begin_game, end_game, tournament_id):
@@ -60,7 +64,8 @@ def get_predictors(begin_game, end_game, tournament_id):
                                          'csum_prev_avg_assists', 'csum_prev_avg_minions_killed',
                                          'csum_prev_avg_total_gold', 'csum_prev_gpm']]
 
-    print(audit_team_stats_df[audit_team_stats_df['team_id'] == 2])
+    #print(audit_team_stats_df[audit_team_stats_df['team_id'] == 2])
+    # print(audit_team_stats_df[audit_team_stats_df.team_id.isin([2, 3657])])
     team_records = team_stats_df.to_dict('records')
     game_stats_predictors = []
     for team_index in range(0, len(team_records), 2):
@@ -80,13 +85,13 @@ def get_predictors(begin_game, end_game, tournament_id):
         for key_stat in key_stats:
             game_stat_predictor_dict['csum_prev_avg_{}'.format(key_stat)] = red_team['csum_prev_avg_{}'.
                 format(key_stat)] - blue_team['csum_prev_avg_{}'.format(key_stat)]
+        game_stat_predictor_dict['csum_prev_gpm'] = red_team['csum_prev_gpm'] - blue_team['csum_prev_gpm']
         game_stat_predictor_dict['game_id'] = red_team['game_id']
         if red_team['won']:
             game_stat_predictor_dict['y_element'] = 1
         elif blue_team['won']:
             game_stat_predictor_dict['y_element'] = 0
         game_stats_predictors.append(game_stat_predictor_dict)
-        print("processing team")
     return game_stats_predictors
 
 
@@ -115,6 +120,7 @@ def get_team_stats_in_dataframe(begin_game, end_game, tournament_id):
                 team_stats_df = blue_team_df.append(red_team_df)
             else:
                 team_stats_df = team_stats_df.append(blue_team_df.append(red_team_df))
+    # print(team_stats_df)
     return team_stats_df
 
 def convert_league_stats_to_team_stats(game, winner_id, blue_team_id, red_team_id):
@@ -168,7 +174,20 @@ def convert_league_stats_to_team_stats(game, winner_id, blue_team_id, red_team_i
 
 
 def main():
-    predict_on_model()
-
+    # NA and EU LCS
+    # 6164, 6253
+    # 6074, 6163
+    eu_predictors, eu_y_array = get_predictors_in_numpy_arrays(6074, 6090, '225')
+    na_predictors, na_y_array = get_predictors_in_numpy_arrays(6164, 6180, '226')
+    print('na predictors {}'.format(na_predictors))
+    print('na_y_array {}'.format(na_y_array))
+    # Need to use concatenate for the predictors because we need an array of an arrays with predictors in each array
+    predictors = numpy.concatenate((eu_predictors, na_predictors))
+    # need to use append because we need an array of 0 and 1's
+    y_array = numpy.append(eu_y_array, na_y_array)
+    print('predictors_add {}'.format(predictors))
+    print('y_array_add {}'.format(y_array))
+    logreg = train_model(predictors, y_array)
+    predict_on_model(logreg)
 if __name__ == "__main__":
     main()
