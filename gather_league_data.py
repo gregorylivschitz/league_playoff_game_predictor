@@ -8,8 +8,9 @@ from datetime import datetime
 # How to install pandas: https://gist.github.com/fyears/7601881
 import pandas
 import numpy
-from sklearn import linear_model
+from sklearn import linear_model, cross_validation, datasets, preprocessing
 import requests
+
 
 def predict_on_model(logreg):
     # CLG vs TIP
@@ -17,13 +18,31 @@ def predict_on_model(logreg):
     print('logistical regression outcome is: {}'.format(logreg.predict(real_array)))
     print('logistical regression probability is: {}'.format(logreg.predict_proba(real_array)))
 
+def test_model(test_predictors, test_y_array):
+    logreg = linear_model.LogisticRegression()
+    scores = cross_validation.cross_val_score(logreg, test_predictors, test_y_array, cv=5)
+    print("Accuracy: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std() * 2))
+
 def train_model(predictors, y_array):
-    print('the predictors are {}'.format(predictors))
-    print('the y_array is {}'.format(y_array))
     logreg = linear_model.LogisticRegression()
     y_1darray = numpy.squeeze(y_array)
     logreg.fit(predictors, y_1darray)
+    print('the predictors are {}'.format(predictors))
+    print('the y_array is {}'.format(y_array))
+    print('the coefficients are {}'.format(logreg.coef_))
     return logreg
+
+def train_model_standard_scaler(predictors, y_array):
+    scale = preprocessing.StandardScaler()
+    scale.fit(predictors)
+    predictors_standard_scaler = scale.transform(predictors)
+    logreg = linear_model.LogisticRegression()
+    logreg.fit(predictors, y_array)
+    print('the standard scaler predictors are {}'.format(predictors_standard_scaler))
+    print('the standard scaler y_array is {}'.format(y_array))
+    print('the standard scaler coefficients are {}'.format(logreg.coef_))
+    return (logreg, scale)
+
 
 
 def get_predictors_in_numpy_arrays(begin_game, end_game, tournament_id):
@@ -44,7 +63,6 @@ def get_predictors_in_numpy_arrays(begin_game, end_game, tournament_id):
     # print("predictors is: {}".format(predictors))
     # print("y array is: {}".format(y_array))
     return (predictors, y_array)
-
 
 
 def get_predictors(begin_game, end_game, tournament_id):
@@ -177,17 +195,14 @@ def main():
     # NA and EU LCS
     # 6164, 6253
     # 6074, 6163
-    eu_predictors, eu_y_array = get_predictors_in_numpy_arrays(6074, 6090, '225')
-    na_predictors, na_y_array = get_predictors_in_numpy_arrays(6164, 6180, '226')
-    print('na predictors {}'.format(na_predictors))
-    print('na_y_array {}'.format(na_y_array))
+    eu_predictors, eu_y_array = get_predictors_in_numpy_arrays(6074, 6163, '225')
+    na_predictors, na_y_array = get_predictors_in_numpy_arrays(6164, 6253, '226')
     # Need to use concatenate for the predictors because we need an array of an arrays with predictors in each array
     predictors = numpy.concatenate((eu_predictors, na_predictors))
     # need to use append because we need an array of 0 and 1's
     y_array = numpy.append(eu_y_array, na_y_array)
-    print('predictors_add {}'.format(predictors))
-    print('y_array_add {}'.format(y_array))
     logreg = train_model(predictors, y_array)
+    test_model(predictors, y_array)
     predict_on_model(logreg)
 if __name__ == "__main__":
     main()
