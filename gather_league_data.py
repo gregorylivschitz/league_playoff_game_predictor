@@ -19,6 +19,9 @@ from scipy.stats import binom
 def predict_on_model(logreg, real_array, team_name):
     print('logistical regression outcome for {} is: {}'.format(team_name, logreg.predict(real_array)))
     print('logistical regression probability is: {}'.format(logreg.predict_proba(real_array)))
+    numpy_array = logreg.predict_proba(real_array)
+    proba_list = numpy_array.tolist()[0]
+    turn_game_into_series(proba_list[1], team_name)
 
 def test_model(test_predictors, test_y_array):
     logreg = linear_model.LogisticRegression()
@@ -45,9 +48,9 @@ def train_model_standard_scaler(predictors, y_array):
     print('the standard scaler coefficients are {}'.format(logreg.coef_))
     return (logreg, scale)
 
-def turn_game_into_series(team_a):
+def turn_game_into_series(team_a, team_a_name):
     proba = (team_a ** 5) + 5 * (team_a ** 4) * (1-team_a) + 10 * (team_a ** 3) * ((1-team_a) ** 2)
-    print('chance to win series is: {}'.format(str(proba)))
+    print('chance for {} to win series is: {}'.format(team_a_name, str(proba)))
 
 def get_predictors_in_numpy_arrays(begin_game, end_game, tournament_id):
     # games_eu = get_predictors(begin_game, end_game, tournament_id)
@@ -213,17 +216,16 @@ def main():
     lolgreg_standard, scaler = train_model_standard_scaler(predictors, y_array)
     test_model(predictors, y_array)
     # CLG vs TIP
-    real_array = numpy.array([[-0.341912, -9.095588, -4.566176, 14.077206, 456.878676, -44.019292]])
+    real_array = numpy.array([[-138.98637, 14.077206, 456.878676, -44.019292]])
     predict_on_model(logreg, real_array, 'CLG')
     # Liquid vs TSM
-    real_array = numpy.array([[1.389706, -1.003676, 6.033088, -98.558824, -4077.095588, 61.307472]])
+    real_array = numpy.array([[262.786975, -98.558824, -4077.095588, 61.307472]])
     predict_on_model(logreg, real_array, 'Liquid')
     # Fanatic vs UOF
-    real_array = numpy.array([[5.529412, -9.095588, 7.529412, 177.529412, 10406.235294, 277.986248]])
+    real_array = numpy.array([[981.237805, 177.529412, 10406.235294, 277.986248]])
     predict_on_model(logreg, real_array, 'Fanatic')
     # Origen vs H2k
-    real_array = numpy.array([[0.753676, -1.606618, 2.297794, 19.823529, 1259.419118, 39.670098]])
+    real_array = numpy.array([[169.763424, 19.823529, 1259.419118, 39.670098]])
     predict_on_model(logreg, real_array, 'Origen')
-    # turn_game_into_series(.55)
 if __name__ == "__main__":
     main()
