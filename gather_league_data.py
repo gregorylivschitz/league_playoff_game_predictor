@@ -10,7 +10,11 @@ import pandas
 import numpy
 from sklearn import linear_model, cross_validation, datasets, preprocessing
 import requests
+from scipy.stats import binom
 
+# def turn_game_proba_into_series(series, team_a):
+#     cdf = binom.cdf(3, series, team_a, loc=3)
+#     print(cdf)
 
 def predict_on_model(logreg):
     # CLG vs TIP
@@ -43,7 +47,9 @@ def train_model_standard_scaler(predictors, y_array):
     print('the standard scaler coefficients are {}'.format(logreg.coef_))
     return (logreg, scale)
 
-
+def turn_game_into_series(team_a):
+    proba = (team_a ** 5) + 5 * (team_a ** 4) * (1-team_a) + 10 * (team_a ** 3) * ((1-team_a) ** 2)
+    print('chance to win series is: {}'.format(str(proba)))
 
 def get_predictors_in_numpy_arrays(begin_game, end_game, tournament_id):
     # games_eu = get_predictors(begin_game, end_game, tournament_id)
@@ -54,8 +60,8 @@ def get_predictors_in_numpy_arrays(begin_game, end_game, tournament_id):
     y_array_list = []
     for game in games:
         if not (numpy.isnan(game['csum_prev_avg_total_gold']) and numpy.isnan(game['csum_prev_avg_minions_killed'])):
-            games_predictors = [game['csum_prev_avg_kills'], game['csum_prev_avg_deaths'], game['csum_prev_avg_assists'],
-                                game['csum_prev_avg_minions_killed'], game['csum_prev_avg_total_gold'], game['csum_prev_gpm']]
+            games_predictors = [game['csum_prev_kda'], game['csum_prev_avg_minions_killed'],
+                                game['csum_prev_avg_total_gold'], game['csum_prev_gpm']]
             game_list.append(games_predictors)
             y_array_list.append(game['y_element'])
     predictors = numpy.array(game_list)
@@ -77,13 +83,16 @@ def get_predictors(begin_game, end_game, tournament_id):
     team_stats_df['gpm'] = team_stats_df['total_gold'] / team_stats_df['game_length_minutes']
     team_stats_df['csum_gpm'] = team_stats_df['csum_total_gold'] / team_stats_df['csum_game_length_minutes']
     team_stats_df['csum_prev_gpm'] = team_stats_df['csum_prev_total_gold'] / team_stats_df['csum_prev_game_length_minutes']
+    team_stats_df['csum_prev_kda'] = team_stats_df['csum_prev_kills'] * team_stats_df['csum_prev_assists']\
+                                     / team_stats_df['csum_prev_deaths']
     team_stats_df = team_stats_df.sort(['game_id'])
-    audit_team_stats_df = team_stats_df[['game_id', 'team_id', 'csum_prev_avg_kills', 'csum_prev_avg_deaths',
-                                         'csum_prev_avg_assists', 'csum_prev_avg_minions_killed',
-                                         'csum_prev_avg_total_gold', 'csum_prev_gpm']]
+    # audit_team_stats_df = team_stats_df[['game_id', 'team_id', 'csum_prev_avg_kills', 'csum_prev_avg_deaths',
+    #                                      'csum_prev_avg_assists', 'csum_prev_avg_minions_killed',
+    #                                      'csum_prev_avg_total_gold', 'csum_prev_gpm']]
 
+    audit_team_stats_df = team_stats_df[['game_id', 'team_id', 'csum_prev_kda']]
     #print(audit_team_stats_df[audit_team_stats_df['team_id'] == 2])
-    # print(audit_team_stats_df[audit_team_stats_df.team_id.isin([2, 3657])])
+    print(audit_team_stats_df[audit_team_stats_df.team_id.isin([2, 3657])])
     team_records = team_stats_df.to_dict('records')
     game_stats_predictors = []
     for team_index in range(0, len(team_records), 2):
@@ -104,6 +113,7 @@ def get_predictors(begin_game, end_game, tournament_id):
             game_stat_predictor_dict['csum_prev_avg_{}'.format(key_stat)] = red_team['csum_prev_avg_{}'.
                 format(key_stat)] - blue_team['csum_prev_avg_{}'.format(key_stat)]
         game_stat_predictor_dict['csum_prev_gpm'] = red_team['csum_prev_gpm'] - blue_team['csum_prev_gpm']
+        game_stat_predictor_dict['csum_prev_kda'] = red_team['csum_prev_kda'] - blue_team['csum_prev_kda']
         game_stat_predictor_dict['game_id'] = red_team['game_id']
         if red_team['won']:
             game_stat_predictor_dict['y_element'] = 1
@@ -202,7 +212,9 @@ def main():
     # need to use append because we need an array of 0 and 1's
     y_array = numpy.append(eu_y_array, na_y_array)
     logreg = train_model(predictors, y_array)
+    lolgreg_standard, scaler = train_model_standard_scaler(predictors, y_array)
     test_model(predictors, y_array)
     predict_on_model(logreg)
+    # turn_game_into_series(.55)
 if __name__ == "__main__":
     main()
