@@ -12,10 +12,8 @@ from sklearn import linear_model, cross_validation, datasets, preprocessing
 import requests
 
 
-def predict_on_model(logreg):
-    # CLG vs TIP
-    real_array = numpy.array([[-0.341912, -9.095588, -4.566176, 14.077206, 456.878676, -44.019292]])
-    print('logistical regression outcome is: {}'.format(logreg.predict(real_array)))
+def predict_on_model(logreg, real_array, team_name):
+    print('logistical regression outcome for {} is: {}'.format(team_name, logreg.predict(real_array)))
     print('logistical regression probability is: {}'.format(logreg.predict_proba(real_array)))
 
 def test_model(test_predictors, test_y_array):
@@ -83,7 +81,7 @@ def get_predictors(begin_game, end_game, tournament_id):
                                          'csum_prev_avg_total_gold', 'csum_prev_gpm']]
 
     #print(audit_team_stats_df[audit_team_stats_df['team_id'] == 2])
-    # print(audit_team_stats_df[audit_team_stats_df.team_id.isin([2, 3657])])
+    #print(audit_team_stats_df[audit_team_stats_df.team_id.isin([3654, 1])])
     team_records = team_stats_df.to_dict('records')
     game_stats_predictors = []
     for team_index in range(0, len(team_records), 2):
@@ -203,6 +201,17 @@ def main():
     y_array = numpy.append(eu_y_array, na_y_array)
     logreg = train_model(predictors, y_array)
     test_model(predictors, y_array)
-    predict_on_model(logreg)
+    # CLG vs TIP
+    real_array = numpy.array([[-0.341912, -9.095588, -4.566176, 14.077206, 456.878676, -44.019292]])
+    predict_on_model(logreg, real_array, 'CLG')
+    # Liquid vs TSM
+    real_array = numpy.array([[1.389706, -1.003676, 6.033088, -98.558824, -4077.095588, 61.307472]])
+    predict_on_model(logreg, real_array, 'Liquid')
+    # Fanatic vs UOF
+    real_array = numpy.array([[5.529412, -9.095588, 7.529412, 177.529412, 10406.235294, 277.986248]])
+    predict_on_model(logreg, real_array, 'Fanatic')
+    # Origen vs H2k
+    real_array = numpy.array([[0.753676, -1.606618, 2.297794, 19.823529, 1259.419118, 39.670098]])
+    predict_on_model(logreg, real_array, 'Origen')
 if __name__ == "__main__":
     main()
