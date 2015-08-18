@@ -1,5 +1,3 @@
-import math
-
 __author__ = 'Greg'
 
 import json
@@ -12,21 +10,27 @@ from sklearn import linear_model, cross_validation, datasets, preprocessing
 import requests
 from scipy.stats import binom
 
-# def turn_game_proba_into_series(series, team_a):
-#     cdf = binom.cdf(3, series, team_a, loc=3)
-#     print(cdf)
+def turn_game_proba_into_series(number_of_games, number_of_games_to_win, team_proba, team_name):
+    pmf = binom.pmf(number_of_games_to_win, number_of_games, team_proba)
+    sf = binom.sf(number_of_games_to_win, number_of_games, team_proba)
+    # take the pmf and add it to sf, so if it's a 5 game series take x=3 and add it to x > 3. To get what teams probability for winning 3 games is.
+    proba = pmf + sf
+    print('chance for {} to win series is: {}'.format(team_name, str(proba)))
+
 
 def predict_on_model(logreg, real_array, team_name):
     print('logistical regression outcome for {} is: {}'.format(team_name, logreg.predict(real_array)))
     print('logistical regression probability is: {}'.format(logreg.predict_proba(real_array)))
     numpy_array = logreg.predict_proba(real_array)
     proba_list = numpy_array.tolist()[0]
-    turn_game_into_series(proba_list[1], team_name)
+    turn_game_proba_into_series(5, 3, proba_list[1], team_name)
+
 
 def test_model(test_predictors, test_y_array):
     logreg = linear_model.LogisticRegression()
     scores = cross_validation.cross_val_score(logreg, test_predictors, test_y_array, cv=5)
     print("Accuracy: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std() * 2))
+
 
 def train_model(predictors, y_array):
     logreg = linear_model.LogisticRegression()
@@ -36,6 +40,7 @@ def train_model(predictors, y_array):
     print('the y_array is {}'.format(y_array))
     print('the coefficients are {}'.format(logreg.coef_))
     return logreg
+
 
 def train_model_standard_scaler(predictors, y_array):
     scale = preprocessing.StandardScaler()
@@ -48,9 +53,6 @@ def train_model_standard_scaler(predictors, y_array):
     print('the standard scaler coefficients are {}'.format(logreg.coef_))
     return (logreg, scale)
 
-def turn_game_into_series(team_a, team_a_name):
-    proba = (team_a ** 5) + 5 * (team_a ** 4) * (1-team_a) + 10 * (team_a ** 3) * ((1-team_a) ** 2)
-    print('chance for {} to win series is: {}'.format(team_a_name, str(proba)))
 
 def get_predictors_in_numpy_arrays(begin_game, end_game, tournament_id):
     # games_eu = get_predictors(begin_game, end_game, tournament_id)
@@ -87,6 +89,9 @@ def get_predictors(begin_game, end_game, tournament_id):
     team_stats_df['csum_prev_kda'] = team_stats_df['csum_prev_kills'] * team_stats_df['csum_prev_assists']\
                                      / team_stats_df['csum_prev_deaths']
     team_stats_df = team_stats_df.sort(['game_id'])
+    # base_filename = 'team_stats_{}'.format(tournament_id)
+    # filename_suffix = '.csv'
+    # team_stats_df.to_csv(os.path.join(os.curdir, base_filename + filename_suffix))
     # audit_team_stats_df = team_stats_df[['game_id', 'team_id', 'csum_prev_avg_kills', 'csum_prev_avg_deaths',
     #                                      'csum_prev_avg_assists', 'csum_prev_avg_minions_killed',
     #                                      'csum_prev_avg_total_gold', 'csum_prev_gpm']]
@@ -191,10 +196,12 @@ def convert_league_stats_to_team_stats(game, winner_id, blue_team_id, red_team_i
     red_team['color'] = 'red'
     blue_team['game_number'] = 1
     red_team['game_number'] = 1
-    if winner_id == blue_team_id:
+    blue_team['team_name'] = game['contestants']['blue']['name']
+    red_team['team_name'] = game['contestants']['red']['name']
+    if winner_id == str(blue_team['team_id']):
         blue_team['won'] = True
         red_team['won'] = False
-    elif winner_id == red_team_id:
+    elif winner_id == str(red_team['team_id']):
         blue_team['won'] = False
         red_team['won'] = True
     else:
