@@ -10,6 +10,7 @@ from sklearn import linear_model, cross_validation, datasets, preprocessing
 import requests
 from scipy.stats import binom
 
+
 def turn_game_proba_into_series(number_of_games, number_of_games_to_win, team_proba, team_name):
     pmf = binom.pmf(number_of_games_to_win, number_of_games, team_proba)
     sf = binom.sf(number_of_games_to_win, number_of_games, team_proba)
@@ -54,17 +55,26 @@ def train_model_standard_scaler(predictors, y_array):
     return (logreg, scale)
 
 
-def get_predictors_in_numpy_arrays(begin_game, end_game, tournament_id):
-    # games_eu = get_predictors(begin_game, end_game, tournament_id)
-    # games_na = get_predictors(begin_game, end_game, tournament_id)
-    # regions = [('na', games_na), ('eu', games_eu)]
-    games = get_predictors(begin_game, end_game, tournament_id)
+def get_latest_team_stats_numpy_array(team_a, team_b, team_stats_df):
+    # team_stats_df = team_stats_df[team_stats_df.team_id.isin([2, 1])]
+    team_stats_df_a = team_stats_df[team_stats_df['team_id'] == team_a]
+    team_stats_df_b = team_stats_df[team_stats_df['team_id'] == team_b]
+    team_stats_df_a = team_stats_df_a.sort(['game_id'], ascending=False).head(1)
+    team_stats_df_b = team_stats_df_b.sort(['game_id'], ascending=False).head(1)
+    dict_team_a = team_stats_df_a.to_dict('records')[0]
+    dict_team_b = team_stats_df_b.to_dict('records')[0]
+    csum_prev_min_K_A = dict_team_a['csum_prev_min_K_A']
+    predictors = [dict_team_a['csum_prev_min_total_gold'] - dict_team_a['csum_prev_min_total_gold']]
+    predictor_numpy_array = real_array = numpy.array([predictors])
+    return predictor_numpy_array
+
+def get_predictors_in_numpy_arrays(team_stats_df):
+    games = get_predictors(team_stats_df)
     game_list = []
     y_array_list = []
     for game in games:
-        if not (numpy.isnan(game['csum_prev_avg_total_gold']) and numpy.isnan(game['csum_prev_avg_minions_killed'])):
-            games_predictors = [game['csum_prev_kda'], game['csum_prev_avg_minions_killed'],
-                                game['csum_prev_avg_total_gold'], game['csum_prev_gpm']]
+        if not (numpy.isnan(game['csum_prev_min_minions_killed']) and numpy.isnan(game['csum_prev_min_total_gold'])):
+            games_predictors = [game['csum_prev_min_total_gold']]
             game_list.append(games_predictors)
             y_array_list.append(game['y_element'])
     predictors = numpy.array(game_list)
@@ -74,31 +84,33 @@ def get_predictors_in_numpy_arrays(begin_game, end_game, tournament_id):
     return (predictors, y_array)
 
 
-def get_predictors(begin_game, end_game, tournament_id):
-    team_stats_df = get_team_stats_in_dataframe(begin_game, end_game, tournament_id)
+def get_team_stats_df(tuple_of_games):
+    team_stats_df = get_team_stats_in_dataframe(tuple_of_games)
     team_stats_df = team_stats_df.sort(['game_id', 'team_id'])
-    key_stats = ['game_number', 'kills', 'deaths', 'assists', 'minions_killed', 'total_gold', 'game_length_minutes']
+    key_stats = ['game_number', 'game_length_minutes', 'kills', 'deaths', 'assists', 'minions_killed', 'total_gold',
+                'K_A', 'A_over_K']
+    team_stats_df['K_A'] = \
+        team_stats_df['kills'] + team_stats_df['assists']
+    team_stats_df['A_over_K'] = \
+        team_stats_df['assists'] + team_stats_df['kills']
     for key_stat in key_stats:
         team_stats_df['csum_{}'.format(key_stat)] = team_stats_df.groupby(by='team_id')[key_stat].cumsum()
         team_stats_df['csum_prev_{}'.format(key_stat)] = team_stats_df['csum_{}'.format(key_stat)] - team_stats_df[key_stat]
         team_stats_df['csum_prev_avg_{}'.format(key_stat)] = \
             team_stats_df['csum_prev_{}'.format(key_stat)] / team_stats_df['csum_prev_game_number']
-    team_stats_df['gpm'] = team_stats_df['total_gold'] / team_stats_df['game_length_minutes']
-    team_stats_df['csum_gpm'] = team_stats_df['csum_total_gold'] / team_stats_df['csum_game_length_minutes']
-    team_stats_df['csum_prev_gpm'] = team_stats_df['csum_prev_total_gold'] / team_stats_df['csum_prev_game_length_minutes']
+        team_stats_df['per_min_()'.format(key_stat)] = team_stats_df[key_stat] / team_stats_df['game_length_minutes']
+        if key_stat not in ['game_number', 'game_length_minutes']:
+            team_stats_df['csum_min_{}'.format(key_stat)] = \
+                team_stats_df['csum_{}'.format(key_stat)] / team_stats_df['csum_game_length_minutes']
+            team_stats_df['csum_prev_min_{}'.format(key_stat)] = \
+                team_stats_df['csum_prev_{}'.format(key_stat)] / team_stats_df['csum_prev_game_length_minutes']
     team_stats_df['csum_prev_kda'] = team_stats_df['csum_prev_kills'] * team_stats_df['csum_prev_assists']\
                                      / team_stats_df['csum_prev_deaths']
     team_stats_df = team_stats_df.sort(['game_id'])
-    # base_filename = 'team_stats_{}'.format(tournament_id)
-    # filename_suffix = '.csv'
-    # team_stats_df.to_csv(os.path.join(os.curdir, base_filename + filename_suffix))
-    # audit_team_stats_df = team_stats_df[['game_id', 'team_id', 'csum_prev_avg_kills', 'csum_prev_avg_deaths',
-    #                                      'csum_prev_avg_assists', 'csum_prev_avg_minions_killed',
-    #                                      'csum_prev_avg_total_gold', 'csum_prev_gpm']]
+    return team_stats_df
 
-    audit_team_stats_df = team_stats_df[['game_id', 'team_id', 'csum_prev_kda']]
-    #print(audit_team_stats_df[audit_team_stats_df['team_id'] == 2])
-    print(audit_team_stats_df[audit_team_stats_df.team_id.isin([2, 3657])])
+
+def get_predictors(team_stats_df):
     team_records = team_stats_df.to_dict('records')
     game_stats_predictors = []
     for team_index in range(0, len(team_records), 2):
@@ -113,12 +125,12 @@ def get_predictors(begin_game, end_game, tournament_id):
         if blue_team['game_id'] != red_team['game_id']:
             raise Exception('Huge problem game_id''s for teams did not match winnging_team game_id: {} '
                             'losing_team game_id: {}'.format(blue_team, red_team))
-        key_stats = ['kills', 'deaths', 'assists', 'minions_killed', 'total_gold']
+        key_stats = ['kills', 'deaths', 'assists', 'minions_killed', 'total_gold',
+                'K_A', 'A_over_K']
         game_stat_predictor_dict = {}
         for key_stat in key_stats:
-            game_stat_predictor_dict['csum_prev_avg_{}'.format(key_stat)] = red_team['csum_prev_avg_{}'.
-                format(key_stat)] - blue_team['csum_prev_avg_{}'.format(key_stat)]
-        game_stat_predictor_dict['csum_prev_gpm'] = red_team['csum_prev_gpm'] - blue_team['csum_prev_gpm']
+            game_stat_predictor_dict['csum_prev_min_{}'.format(key_stat)] = red_team['csum_prev_min_{}'.
+                format(key_stat)] - blue_team['csum_prev_min_{}'.format(key_stat)]
         game_stat_predictor_dict['csum_prev_kda'] = red_team['csum_prev_kda'] - blue_team['csum_prev_kda']
         game_stat_predictor_dict['game_id'] = red_team['game_id']
         if red_team['won']:
@@ -129,35 +141,32 @@ def get_predictors(begin_game, end_game, tournament_id):
     return game_stats_predictors
 
 
-def get_team_stats_in_dataframe(begin_game, end_game, tournament_id):
+def get_team_stats_in_dataframe(tuple_of_games):
     list_of_games = []
     team_stats_df = None
-    for game_id in range(begin_game, end_game):
-        response = requests.get('http://na.lolesports.com:80/api/game/{}.json'.format(game_id))
-        game_league = response.text
-        j_game_league = json.loads(game_league)
-        j_game_league['dateTime'] = datetime.strptime(j_game_league['dateTime'], '%Y-%m-%dT%H:%MZ')
-        j_game_league['game_id'] = game_id
-        list_of_games.append(j_game_league)
-    sorted_list_of_games = sorted(list_of_games, key=itemgetter('dateTime'))
     x = 0
-    for game in sorted_list_of_games:
-        blue_team_id = game['contestants']['blue']['id']
-        red_team_id = game['contestants']['red']['id']
-        winner_id = game['winnerId']
-        if game != ['Entity not found'] and game['tournament']['id'] == tournament_id:
-            blue_team, red_team = convert_league_stats_to_team_stats(game, winner_id, blue_team_id, red_team_id)
-            blue_team_df = pandas.DataFrame(blue_team, index=[x])
-            red_team_df = pandas.DataFrame(red_team, index=[x + 1])
-            x += 2
-            if team_stats_df is None:
-                team_stats_df = blue_team_df.append(red_team_df)
-            else:
-                team_stats_df = team_stats_df.append(blue_team_df.append(red_team_df))
+    for begin_game_id, end_game_id in tuple_of_games:
+        for game_id in range(begin_game_id, end_game_id):
+            response = requests.get('http://na.lolesports.com:80/api/game/{}.json'.format(game_id))
+            game_league = response.text
+            game = json.loads(game_league)
+            blue_team_id = game['contestants']['blue']['id']
+            red_team_id = game['contestants']['red']['id']
+            winner_id = game['winnerId']
+            if game != ['Entity not found']:
+                blue_team, red_team = convert_league_stats_to_team_stats(game, winner_id, blue_team_id, red_team_id, game_id)
+                blue_team_df = pandas.DataFrame(blue_team, index=[x])
+                red_team_df = pandas.DataFrame(red_team, index=[x + 1])
+                x += 2
+                if team_stats_df is None:
+                    team_stats_df = blue_team_df.append(red_team_df)
+                else:
+                    team_stats_df = team_stats_df.append(blue_team_df.append(red_team_df))
     # print(team_stats_df)
     return team_stats_df
 
-def convert_league_stats_to_team_stats(game, winner_id, blue_team_id, red_team_id):
+
+def convert_league_stats_to_team_stats(game, winner_id, blue_team_id, red_team_id, game_id):
     blue_team = {}
     red_team = {}
     min_played = game['gameLength']/60
@@ -186,8 +195,8 @@ def convert_league_stats_to_team_stats(game, winner_id, blue_team_id, red_team_i
             red_team_count += 1
             for key_stat, value_stat in key_stats.items():
                 red_team[key_stat] = red_team.get(key_stat, 0) + value_stat
-    blue_team['game_id'] = game['game_id']
-    red_team['game_id'] = game['game_id']
+    blue_team['game_id'] = game_id
+    red_team['game_id'] = game_id
     blue_team['team_id'] = int(blue_team_id)
     red_team['team_id'] = int(red_team_id)
     blue_team['game_length_minutes'] = game['gameLength']/60
@@ -213,8 +222,10 @@ def main():
     # NA and EU LCS
     # 6164, 6253
     # 6074, 6163
-    eu_predictors, eu_y_array = get_predictors_in_numpy_arrays(6074, 6163, '225')
-    na_predictors, na_y_array = get_predictors_in_numpy_arrays(6164, 6253, '226')
+    eu_team_df = get_team_stats_df(((6074, 6163), (7061, 7065)))
+    na_team_df = get_team_stats_df(((6164, 6253), (7067, 7071)))
+    eu_predictors, eu_y_array = get_predictors_in_numpy_arrays(eu_team_df)
+    na_predictors, na_y_array = get_predictors_in_numpy_arrays(na_team_df)
     # Need to use concatenate for the predictors because we need an array of an arrays with predictors in each array
     predictors = numpy.concatenate((eu_predictors, na_predictors))
     # need to use append because we need an array of 0 and 1's
@@ -222,17 +233,11 @@ def main():
     logreg = train_model(predictors, y_array)
     lolgreg_standard, scaler = train_model_standard_scaler(predictors, y_array)
     test_model(predictors, y_array)
-    # CLG vs TIP
-    real_array = numpy.array([[-138.98637, 14.077206, 456.878676, -44.019292]])
+    # CLG vs TSM
+    real_array = get_latest_team_stats_numpy_array(2, 1, na_team_df)
     predict_on_model(logreg, real_array, 'CLG')
-    # Liquid vs TSM
-    real_array = numpy.array([[262.786975, -98.558824, -4077.095588, 61.307472]])
-    predict_on_model(logreg, real_array, 'Liquid')
-    # Fanatic vs UOF
-    real_array = numpy.array([[981.237805, 177.529412, 10406.235294, 277.986248]])
-    predict_on_model(logreg, real_array, 'Fanatic')
-    # Origen vs H2k
-    real_array = numpy.array([[169.763424, 19.823529, 1259.419118, 39.670098]])
-    predict_on_model(logreg, real_array, 'Origen')
+    # Fnatic vs Origen
+    real_array = get_latest_team_stats_numpy_array(68, 3862, eu_team_df)
+    predict_on_model(logreg, real_array, 'Fnatic')
 if __name__ == "__main__":
     main()
