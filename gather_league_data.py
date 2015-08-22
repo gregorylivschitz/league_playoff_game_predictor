@@ -64,7 +64,9 @@ def get_latest_team_stats_numpy_array(team_a, team_b, team_stats_df):
     dict_team_a = team_stats_df_a.to_dict('records')[0]
     dict_team_b = team_stats_df_b.to_dict('records')[0]
     csum_prev_min_K_A = dict_team_a['csum_prev_min_K_A']
-    predictors = [dict_team_a['csum_prev_min_total_gold'] - dict_team_a['csum_prev_min_total_gold']]
+    predictors = [dict_team_a['csum_prev_min_K_A'] - dict_team_b['csum_prev_min_K_A'],
+                  dict_team_a['csum_prev_min_minions_killed'] - dict_team_b['csum_prev_min_minions_killed'],
+                  dict_team_a['csum_prev_min_total_gold'] - dict_team_a['csum_prev_min_total_gold']]
     predictor_numpy_array = real_array = numpy.array([predictors])
     return predictor_numpy_array
 
@@ -74,7 +76,8 @@ def get_predictors_in_numpy_arrays(team_stats_df):
     y_array_list = []
     for game in games:
         if not (numpy.isnan(game['csum_prev_min_minions_killed']) and numpy.isnan(game['csum_prev_min_total_gold'])):
-            games_predictors = [game['csum_prev_min_total_gold']]
+            games_predictors = [game['csum_prev_min_K_A'], game['csum_prev_min_minions_killed'],
+                                game['csum_prev_min_total_gold']]
             game_list.append(games_predictors)
             y_array_list.append(game['y_element'])
     predictors = numpy.array(game_list)
