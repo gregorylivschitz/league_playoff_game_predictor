@@ -70,6 +70,7 @@ def get_latest_team_stats_numpy_array(team_a, team_b, team_stats_df):
     predictor_numpy_array = real_array = numpy.array([predictors])
     return predictor_numpy_array
 
+
 def get_predictors_in_numpy_arrays(team_stats_df):
     games = get_predictors(team_stats_df)
     game_list = []
@@ -96,7 +97,13 @@ def get_team_stats_df(tuple_of_games):
         team_stats_df['kills'] + team_stats_df['assists']
     team_stats_df['A_over_K'] = \
         team_stats_df['assists'] + team_stats_df['kills']
+    team_grouped_by_game_id_df = team_stats_df.groupby('game_id', as_index=False).sum
+    team_stats_df = pandas.merge(team_stats_df, team_grouped_by_game_id_df, on=['game_id'])
     for key_stat in key_stats:
+        # Need to add x/y to the keystat because when I add the groupby and merge the keystats get x and y added
+        # to them at the end since they are the same name
+        key_stat_x = '{}_x'.format(key_stat)
+        key_stat_y = '{}_y'.format(key_stat)
         team_stats_df['csum_{}'.format(key_stat)] = team_stats_df.groupby(by='team_id')[key_stat].cumsum()
         team_stats_df['csum_prev_{}'.format(key_stat)] = team_stats_df['csum_{}'.format(key_stat)] - team_stats_df[key_stat]
         team_stats_df['csum_prev_avg_{}'.format(key_stat)] = \
