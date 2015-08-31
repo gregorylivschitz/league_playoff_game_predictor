@@ -69,7 +69,7 @@ def get_latest_team_stats_numpy_array(team_a, team_b, team_stats_df):
     # predictors = [dict_team_a['csum_prev_min_K_A'] - dict_team_b['csum_prev_min_K_A'],
     #               dict_team_a['csum_prev_min_minions_killed'] - dict_team_b['csum_prev_min_minions_killed'],
     #               dict_team_a['csum_prev_min_total_gold'] - dict_team_a['csum_prev_min_total_gold']]
-    predictors = [dict_team_a['eff_K_A'] - dict_team_b['eff_K_A'],
+    predictors = [
                   dict_team_a['eff_minions_killed'] - dict_team_b['eff_minions_killed'],
                   dict_team_a['eff_total_gold'] - dict_team_a['eff_total_gold']]
     predictor_numpy_array = numpy.array([predictors])
@@ -84,7 +84,7 @@ def get_predictors_in_numpy_arrays(team_stats_df):
         if not (numpy.isnan(game['csum_prev_min_minions_killed']) and numpy.isnan(game['csum_prev_min_total_gold'])):
             # games_predictors = [game['csum_prev_min_K_A'], game['csum_prev_min_minions_killed'],
             #                     game['csum_prev_min_total_gold']]
-            games_predictors = [game['eff_K_A'], game['eff_minions_killed'],
+            games_predictors = [game['eff_minions_killed'],
                                 game['eff_total_gold']]
             game_list.append(games_predictors)
             y_array_list.append(game['y_element'])
@@ -250,8 +250,9 @@ def main():
     # NA and EU LCS
     # 6164, 6253
     # 6074, 6163
-    eu_team_df = get_team_stats_df(((6074, 6163), (7061, 7065)))
-    na_team_df = get_team_stats_df(((6164, 6253), (7067, 7071)))
+    predictor_stats = ['eff_minions_killed', 'eff_total_gold']
+    eu_team_df = get_team_stats_df([(6074, 6163), (7061, 7065)])
+    na_team_df = get_team_stats_df([(6164, 6253), (7067, 7071)])
     eu_predictors, eu_y_array = get_predictors_in_numpy_arrays(eu_team_df)
     na_predictors, na_y_array = get_predictors_in_numpy_arrays(na_team_df)
     # Need to use concatenate for the predictors because we need an array of an arrays with predictors in each array
