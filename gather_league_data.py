@@ -11,6 +11,7 @@ import numpy
 from sklearn import linear_model, cross_validation, datasets, preprocessing
 import requests
 from scipy.stats import binom
+from sqlalchemy import create_engine
 
 
 def turn_game_proba_into_series(number_of_games, number_of_games_to_win, team_proba, team_name):
@@ -95,8 +96,41 @@ def get_predictors_in_numpy_arrays(team_stats_df):
     return (predictors, y_array)
 
 
-def get_team_stats_df(tuple_of_games):
-    team_stats_df = get_team_stats_in_dataframe(tuple_of_games)
+def check_cache(list_of_games):
+    game_numbers_all = []
+    for begin_game_number, last_game_number in list_of_games:
+        game_numbers = range(begin_game_number, last_game_number)
+        game_numbers_all.append(game_numbers)
+    conn = create_engine('postgresql://postgres:postgres@localhost:5432/postgres')
+    has_game_stats_table = conn.has_table('games_stats')
+    if has_game_stats_table:
+        df_game_stats = pandas.read_sql_table('team_stats', conn)
+        df_game_stats_all = df_game_stats[df_game_stats.game_number.isin(game_numbers_all)]
+        # Using game_numbers here since we need the last few games to check.
+        df_game_stats = df_game_stats[df_game_stats.game_number.isin(game_numbers)]
+        max_game_number_cached = df_game_stats['game_number'].max()
+        # Check if all the game numbers have been cached, if not return what game to start form and what game to end from.
+        if (max_game_number_cached + 1) != last_game_number:
+            print('not everything is cached retrieve from game {} to game {}'.format(max_game_number_cached, last_game_number))
+            team_stats_df = get_team_stats_in_dataframe([(max_game_number_cached, last_game_number)])
+            team_stats_df.to_sql('team_stats', conn)
+            pandas.concat([df_game_stats_all, team_stats_df])
+        else:
+            # If everything was cached return cached as true and just return the last numbers
+            # I could do this part better.
+            print("everything cached no need to retrieve from api")
+            return df_game_stats_all
+    else:
+        # Table did not exist, have to get all
+        team_stats_df = get_team_stats_in_dataframe(list_of_games)
+        return team_stats_df
+
+
+def get_team_stats_df(list_of_games, has_cache=False):
+    if has_cache:
+        team_stats = check_cache(list_of_games)
+    else:
+        team_stats_df = get_team_stats_in_dataframe(list_of_games)
     team_stats_df = team_stats_df.sort(['game_id', 'team_id'])
     key_stats = ['game_number', 'game_length_minutes', 'kills', 'deaths', 'assists', 'minions_killed', 'total_gold',
                 'K_A', 'A_over_K']
@@ -169,11 +203,10 @@ def get_predictors(team_stats_df):
     return game_stats_predictors
 
 
-def get_team_stats_in_dataframe(tuple_of_games):
-    list_of_games = []
+def get_team_stats_in_dataframe(list_of_games):
     team_stats_df = None
     x = 0
-    for begin_game_id, end_game_id in tuple_of_games:
+    for begin_game_id, end_game_id in list_of_games:
         for game_id in range(begin_game_id, end_game_id):
             response = requests.get('http://na.lolesports.com:80/api/game/{}.json'.format(game_id))
             game_league = response.text
