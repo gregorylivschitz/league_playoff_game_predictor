@@ -295,11 +295,12 @@ def main():
     logreg = train_model(predictors, y_array)
     lolgreg_standard, scaler = train_model_standard_scaler(predictors, y_array)
     test_model(predictors, y_array)
-    # CLG vs TSM
-    real_array = get_latest_team_stats_numpy_array(2, 1, na_team_df)
-    predict_on_model(logreg, real_array, 'CLG')
-    # Fnatic vs Origen
-    real_array = get_latest_team_stats_numpy_array(68, 3862, eu_team_df)
-    predict_on_model(logreg, real_array, 'Fnatic')
+    # # CLG vs TSM
+    # real_array = get_latest_team_stats_numpy_array(2, 1, na_team_df)
+    # predict_on_model(logreg, real_array, 'CLG')
+    # # Fnatic vs Origen
+    # real_array = get_latest_team_stats_numpy_array(68, 3862, eu_team_df)
+    # predict_on_model(logreg, real_array, 'Fnatic')
+
 if __name__ == "__main__":
     main()
