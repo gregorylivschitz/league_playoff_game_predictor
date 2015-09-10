@@ -12,6 +12,7 @@ from sklearn import linear_model, cross_validation, datasets, preprocessing
 import requests
 from scipy.stats import binom
 from sqlalchemy import create_engine
+import psycopg2
 
 
 def turn_game_proba_into_series(number_of_games, number_of_games_to_win, team_proba, team_name):
@@ -95,26 +96,40 @@ def get_predictors_in_numpy_arrays(team_stats_df):
     # print("y array is: {}".format(y_array))
     return (predictors, y_array)
 
+def list_of_tuples_to_list(list_of_tuples_games):
+    game_ids_all = []
+    for begin_game_number, last_game_number in list_of_tuples_games:
+        game_ids = list(range(begin_game_number, last_game_number))
+        game_ids_all = game_ids_all + game_ids
+    return game_ids_all
 
-def check_cache(list_of_games):
-    game_numbers_all = []
-    for begin_game_number, last_game_number in list_of_games:
-        game_numbers = range(begin_game_number, last_game_number)
-        game_numbers_all.append(game_numbers)
+
+def check_cache(game_ids_all):
+    last_game_number = game_ids_all[-1]
     conn = create_engine('postgresql://postgres:postgres@localhost:5432/postgres')
-    has_game_stats_table = conn.has_table('games_stats')
+    has_game_stats_table = conn.has_table('team_stats')
     if has_game_stats_table:
         df_game_stats = pandas.read_sql_table('team_stats', conn)
-        df_game_stats_all = df_game_stats[df_game_stats.game_number.isin(game_numbers_all)]
+        print('game_ids_all is {}'.format(game_ids_all))
+        df_game_stats_all = df_game_stats[df_game_stats.game_id.isin(game_ids_all)]
         # Using game_numbers here since we need the last few games to check.
-        df_game_stats = df_game_stats[df_game_stats.game_number.isin(game_numbers)]
-        max_game_number_cached = df_game_stats['game_number'].max()
+        max_game_id_cached = df_game_stats_all['game_id'].max()
+        print('max_game_id is: {}'.format(max_game_id_cached))
+        if pandas.isnull(max_game_id_cached):
+            print('max_game_id is nan changing to: {}'.format(game_ids_all[0]))
+            max_game_id_cached = game_ids_all[0]
         # Check if all the game numbers have been cached, if not return what game to start form and what game to end from.
-        if (max_game_number_cached + 1) != last_game_number:
-            print('not everything is cached retrieve from game {} to game {}'.format(max_game_number_cached, last_game_number))
-            team_stats_df = get_team_stats_in_dataframe([(max_game_number_cached, last_game_number)])
-            team_stats_df.to_sql('team_stats', conn)
-            pandas.concat([df_game_stats_all, team_stats_df])
+        if max_game_id_cached != last_game_number:
+            print('not everything is cached retrieve from game_ids: {}'.format(game_ids_all))
+            # Get the index of the max_game_id
+            max_game_id_index = game_ids_all.index(max_game_id_cached)
+            # Trim down the list to only the games that need to be retrieved, start from the max_id + 1 because we don't
+            # want to count max_id we already have it
+            game_ids_to_find = game_ids_all[max_game_id_index:]
+            team_stats_df = get_team_stats_in_dataframe(game_ids_to_find)
+            team_stats_df.to_sql('team_stats', conn, if_exists='append')
+            team_stats_df = pandas.concat([df_game_stats_all, team_stats_df])
+            return team_stats_df
         else:
             # If everything was cached return cached as true and just return the last numbers
             # I could do this part better.
@@ -122,15 +137,18 @@ def check_cache(list_of_games):
             return df_game_stats_all
     else:
         # Table did not exist, have to get all
-        team_stats_df = get_team_stats_in_dataframe(list_of_games)
+        team_stats_df = get_team_stats_in_dataframe(game_ids_all)
+        print('table does not exist inserting full table')
+        team_stats_df.to_sql('team_stats', conn)
+        print('table inserted')
         return team_stats_df
 
 
-def get_team_stats_df(list_of_games, has_cache=False):
+def get_team_stats_df(game_ids_all, has_cache=False):
     if has_cache:
-        team_stats = check_cache(list_of_games)
+        team_stats_df = check_cache(game_ids_all)
     else:
-        team_stats_df = get_team_stats_in_dataframe(list_of_games)
+        team_stats_df = get_team_stats_in_dataframe(game_ids_all)
     team_stats_df = team_stats_df.sort(['game_id', 'team_id'])
     key_stats = ['game_number', 'game_length_minutes', 'kills', 'deaths', 'assists', 'minions_killed', 'total_gold',
                 'K_A', 'A_over_K']
@@ -203,26 +221,25 @@ def get_predictors(team_stats_df):
     return game_stats_predictors
 
 
-def get_team_stats_in_dataframe(list_of_games):
+def get_team_stats_in_dataframe(game_ids_all):
     team_stats_df = None
     x = 0
-    for begin_game_id, end_game_id in list_of_games:
-        for game_id in range(begin_game_id, end_game_id):
-            response = requests.get('http://na.lolesports.com:80/api/game/{}.json'.format(game_id))
-            game_league = response.text
-            game = json.loads(game_league)
-            blue_team_id = game['contestants']['blue']['id']
-            red_team_id = game['contestants']['red']['id']
-            winner_id = game['winnerId']
-            if game != ['Entity not found']:
-                blue_team, red_team = convert_league_stats_to_team_stats(game, winner_id, blue_team_id, red_team_id, game_id)
-                blue_team_df = pandas.DataFrame(blue_team, index=[x])
-                red_team_df = pandas.DataFrame(red_team, index=[x + 1])
-                x += 2
-                if team_stats_df is None:
-                    team_stats_df = blue_team_df.append(red_team_df)
-                else:
-                    team_stats_df = team_stats_df.append(blue_team_df.append(red_team_df))
+    for game_id in game_ids_all:
+        response = requests.get('http://na.lolesports.com:80/api/game/{}.json'.format(game_id))
+        game_league = response.text
+        game = json.loads(game_league)
+        blue_team_id = game['contestants']['blue']['id']
+        red_team_id = game['contestants']['red']['id']
+        winner_id = game['winnerId']
+        if game != ['Entity not found']:
+            blue_team, red_team = convert_league_stats_to_team_stats(game, winner_id, blue_team_id, red_team_id, game_id)
+            blue_team_df = pandas.DataFrame(blue_team, index=[x])
+            red_team_df = pandas.DataFrame(red_team, index=[x + 1])
+            x += 2
+            if team_stats_df is None:
+                team_stats_df = blue_team_df.append(red_team_df)
+            else:
+                team_stats_df = team_stats_df.append(blue_team_df.append(red_team_df))
     # print(team_stats_df)
     return team_stats_df
 
@@ -275,7 +292,9 @@ def convert_league_stats_to_team_stats(game, winner_id, blue_team_id, red_team_i
         blue_team['won'] = False
         red_team['won'] = True
     else:
-        raise Exception("This is no winning team please check data!")
+        raise Exception("This is no winning team for blue team {} and red team {} and red game {} "
+                        "and blue game {} and red won is: and blue won is:"
+                        .format(blue_team['team_id'], red_team['team_id'], red_team['game_id'], blue_team['game_id']))
     return blue_team, red_team
 
 
@@ -284,8 +303,10 @@ def main():
     # 6164, 6253
     # 6074, 6163
     predictor_stats = ['eff_minions_killed', 'eff_total_gold']
-    eu_team_df = get_team_stats_df([(6074, 6163), (7061, 7065)])
-    na_team_df = get_team_stats_df([(6164, 6253), (7067, 7071)])
+    eu_games = list_of_tuples_to_list([(6074, 6163), (7061, 7065)])
+    na_games = list_of_tuples_to_list([(6164, 6253), (7067, 7071)])
+    eu_team_df = get_team_stats_df(eu_games, has_cache=False)
+    na_team_df = get_team_stats_df(na_games, has_cache=False)
     eu_predictors, eu_y_array = get_predictors_in_numpy_arrays(eu_team_df)
     na_predictors, na_y_array = get_predictors_in_numpy_arrays(na_team_df)
     # Need to use concatenate for the predictors because we need an array of an arrays with predictors in each array
@@ -295,12 +316,12 @@ def main():
     logreg = train_model(predictors, y_array)
     lolgreg_standard, scaler = train_model_standard_scaler(predictors, y_array)
     test_model(predictors, y_array)
-    # # CLG vs TSM
-    # real_array = get_latest_team_stats_numpy_array(2, 1, na_team_df)
-    # predict_on_model(logreg, real_array, 'CLG')
-    # # Fnatic vs Origen
-    # real_array = get_latest_team_stats_numpy_array(68, 3862, eu_team_df)
-    # predict_on_model(logreg, real_array, 'Fnatic')
+    # CLG vs TSM
+    real_array = get_latest_team_stats_numpy_array(2, 1, na_team_df)
+    predict_on_model(logreg, real_array, 'CLG')
+    # Fnatic vs Origen
+    real_array = get_latest_team_stats_numpy_array(68, 3862, eu_team_df)
+    predict_on_model(logreg, real_array, 'Fnatic')
 
 if __name__ == "__main__":
     main()
