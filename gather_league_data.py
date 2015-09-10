@@ -59,7 +59,8 @@ def train_model_standard_scaler(predictors, y_array):
     return (logreg, scale)
 
 
-def get_latest_team_stats_numpy_array(team_a, team_b, team_stats_df):
+def get_latest_team_stats_numpy_array(team_a, team_b, team_stats_df, predictor_stats):
+    game_predictor_stats = []
     # team_stats_df = team_stats_df[team_stats_df.team_id.isin([2, 1])]
     team_stats_df_a = team_stats_df[team_stats_df['team_id_x'] == team_a]
     team_stats_df_b = team_stats_df[team_stats_df['team_id_x'] == team_b]
@@ -71,24 +72,25 @@ def get_latest_team_stats_numpy_array(team_a, team_b, team_stats_df):
     # predictors = [dict_team_a['csum_prev_min_K_A'] - dict_team_b['csum_prev_min_K_A'],
     #               dict_team_a['csum_prev_min_minions_killed'] - dict_team_b['csum_prev_min_minions_killed'],
     #               dict_team_a['csum_prev_min_total_gold'] - dict_team_a['csum_prev_min_total_gold']]
-    predictors = [
-                  dict_team_a['eff_minions_killed'] - dict_team_b['eff_minions_killed'],
-                  dict_team_a['eff_total_gold'] - dict_team_a['eff_total_gold']]
-    predictor_numpy_array = numpy.array([predictors])
+    for predictor_stat in predictor_stats:
+        dict_team_difference = dict_team_a[predictor_stat] - dict_team_b[predictor_stat]
+        game_predictor_stats.append(dict_team_difference)
+    predictor_numpy_array = numpy.array([game_predictor_stats])
     return predictor_numpy_array
 
 
-def get_predictors_in_numpy_arrays(team_stats_df):
+def get_predictors_in_numpy_arrays(team_stats_df, predictor_stats):
     games = get_predictors(team_stats_df)
     game_list = []
     y_array_list = []
     for game in games:
+        game_predictor_stats = []
         if not (numpy.isnan(game['csum_prev_min_minions_killed']) and numpy.isnan(game['csum_prev_min_total_gold'])):
             # games_predictors = [game['csum_prev_min_K_A'], game['csum_prev_min_minions_killed'],
             #                     game['csum_prev_min_total_gold']]
-            games_predictors = [game['eff_minions_killed'],
-                                game['eff_total_gold']]
-            game_list.append(games_predictors)
+            for predictor_stat in predictor_stats:
+                game_predictor_stats.append(game[predictor_stat])
+            game_list.append(game_predictor_stats)
             y_array_list.append(game['y_element'])
     predictors = numpy.array(game_list)
     y_array = numpy.array([y_array_list])
@@ -305,10 +307,10 @@ def main():
     predictor_stats = ['eff_minions_killed', 'eff_total_gold']
     eu_games = list_of_tuples_to_list([(6074, 6163), (7061, 7065)])
     na_games = list_of_tuples_to_list([(6164, 6253), (7067, 7071)])
-    eu_team_df = get_team_stats_df(eu_games, has_cache=False)
-    na_team_df = get_team_stats_df(na_games, has_cache=False)
-    eu_predictors, eu_y_array = get_predictors_in_numpy_arrays(eu_team_df)
-    na_predictors, na_y_array = get_predictors_in_numpy_arrays(na_team_df)
+    eu_team_df = get_team_stats_df(eu_games, has_cache=True)
+    na_team_df = get_team_stats_df(na_games, has_cache=True)
+    eu_predictors, eu_y_array = get_predictors_in_numpy_arrays(eu_team_df, predictor_stats)
+    na_predictors, na_y_array = get_predictors_in_numpy_arrays(na_team_df, predictor_stats)
     # Need to use concatenate for the predictors because we need an array of an arrays with predictors in each array
     predictors = numpy.concatenate((eu_predictors, na_predictors))
     # need to use append because we need an array of 0 and 1's
@@ -317,10 +319,10 @@ def main():
     lolgreg_standard, scaler = train_model_standard_scaler(predictors, y_array)
     test_model(predictors, y_array)
     # CLG vs TSM
-    real_array = get_latest_team_stats_numpy_array(2, 1, na_team_df)
+    real_array = get_latest_team_stats_numpy_array(2, 1, na_team_df, predictor_stats)
     predict_on_model(logreg, real_array, 'CLG')
     # Fnatic vs Origen
-    real_array = get_latest_team_stats_numpy_array(68, 3862, eu_team_df)
+    real_array = get_latest_team_stats_numpy_array(68, 3862, eu_team_df, predictor_stats)
     predict_on_model(logreg, real_array, 'Fnatic')
 
 if __name__ == "__main__":
