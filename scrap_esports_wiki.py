@@ -11,23 +11,32 @@ import requests
 
 
 
-response = requests.get('http://lol.esportspedia.com/wiki/2015_LPL/Summer/Regular_Season/Scoreboards')
+response = requests.get('http://lol.esportspedia.com/wiki/2015_LPL/Summer/Regular_Season/Scoreboards/Week_2')
 text = response.text
 soup = BeautifulSoup(text)
 
 
 soup_tables = soup.find_all("table", {"class": "wikitable matchrecap1"})
-# soup_stuff = soup_tables.find_all("table", {"class": "wikitable matchrecap2"})
-# print(soup_stuff)
-all_td = []
-all_col = []
+
 blue_team = {'color': 'blue'}
 red_team = {'color': 'red'}
 for table in soup_tables:
     recap_tables = table.find_all("table", {"class": "wikitable matchrecap2"})
     for recap_table in recap_tables:
-        for row in recap_table.find_all("tr"):
+        all_td = []
+        rows = recap_table.find_all("tr")
+        for index, row in enumerate(rows):
             cols = row.find_all('td')
+            # find the correct td and the one with the background color of ccffcc is the team that won.
+            if index == 1:
+                try:
+                    if cols[1]['style'] == 'background-color:#ccffcc':
+                        blue_team['won'] = True
+                        red_team['won'] = False
+                except KeyError:
+                    if cols[2]['style'] == 'background-color:#ccffcc':
+                        blue_team['won'] = False
+                        red_team['won'] = True
             for col in cols:
                 if len(col.contents) == 3:
                     if 'div' not in str(col.contents[1]):
@@ -46,18 +55,13 @@ for table in soup_tables:
                                 kills = int(col.contents[0].string.strip())
                                 red_team['kills'] = kills
                 all_td.append(str(col.contents[0]))
-                all_col.append(col)
-    all_td = list(map(lambda x: x.strip(), all_td))
-    all_td = list(filter(lambda x: x.strip(), all_td))
-    # print(all_col)
-    blue_team['team_name'] = all_td[0]
-    red_team['team_name'] = all_td[3]
-    game_length_minutes = all_td[7].replace(':', '.')
-    blue_team['game_length_minutes'] = game_length_minutes
-    red_team['game_length_minutes'] = game_length_minutes
-    print(cols[1])
-    print(all_col[13])
-    print(all_col[14])
-    print(blue_team)
-    print(red_team)
-    break
+        all_td = list(map(lambda x: x.strip(), all_td))
+        all_td = list(filter(lambda x: x.strip(), all_td))
+        blue_team['team_name'] = all_td[0]
+        red_team['team_name'] = all_td[3]
+        game_length_minutes = all_td[7].replace(':', '.')
+        blue_team['game_length_minutes'] = game_length_minutes
+        red_team['game_length_minutes'] = game_length_minutes
+        print(blue_team)
+        print(red_team)
+
