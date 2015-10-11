@@ -2,16 +2,26 @@ __author__ = 'Greg'
 
 from bs4 import BeautifulSoup, NavigableString
 import requests
-import sys
 
 # Need to get it to look like this:
 # {'color': 'blue', 'won': True, 'assists': 37, 'game_number': 1, 'team_name': 'H2K', 'total_gold': 51230,
 # 'team_id': 1273, 'game_id': 6092, 'deaths': 5, 'game_length_minutes': 27.816666666666666, 'kills': 16,
 # 'minions_killed': 783}
 
-response = requests.get('http://lol.esportspedia.com/wiki/2015_LPL/Summer/Regular_Season/Scoreboards')
-text = response.text
-soup = BeautifulSoup(text)
+
+def merge_game_and_game_info(soup):
+    games, games_info = parse_recap_tables(soup)
+    if len(games) != len(games_info):
+        raise ValueError('merging error games and games_info did not match something is wrong with the html')
+    games_merge = []
+    for game_index, game in enumerate(games):
+        game_blue_team, game_red_team = game
+        game_info_blue_team, game_info_red_team = games_info[game_index]
+        game_blue_merged = dict(list(game_blue_team.items()) + list(game_info_blue_team.items()))
+        game_red_merged = dict(list(game_red_team.items()) + list(game_info_red_team.items()))
+        games_merge.append((game_blue_merged, game_red_merged))
+    print(games_merge)
+    return games_merge
 
 # parse recap tables into a list of team tuples
 def parse_recap_tables(soup):
@@ -20,6 +30,7 @@ def parse_recap_tables(soup):
     for recap_table in soup.find_all("table", {"class": "wikitable matchrecap1"}):
         games.append(parse_game(recap_table))
         games_info.append(parse_game_info(recap_table))
+    return games, games_info
 
 # given a column, get contents and strip garbage
 def parse_column(col):
@@ -73,59 +84,34 @@ def parse_team_game_info(color, game_info_table):
     rows = game_info_table.find_all('tr')
     # row where team name is kept and how we determine the win vs the loss
     row_game_info = rows[1]
-    row_game_info
+    cols = row_game_info.find_all('td')
+    # cols[0] = blue team_name, cols[1] = blue win or loss, cols[3] = red team name, cols[2] = red won or losee
+    if team['color'] == 'blue':
+        team['team_name'] = cols[0].contents[0].strip()
+        try:
+            if cols[1]['style'] == 'background-color:#ccffcc':
+                team['won'] = True
+        except KeyError:
+            team['won'] = False
+    elif team['color'] == 'red':
+        team['team_name'] = cols[3].contents[0].strip()
+        try:
+            if cols[2]['style'] == 'background-color:#ccffcc':
+                team['won'] = True
+        except KeyError:
+            team['won'] = False
+    rows_game_stats_info = rows[3]
+    cols_game_stats_info = rows_game_stats_info.find_all('td')
+    team['game_length_minutes'] = cols_game_stats_info[5].contents[0].strip().replace(':', '.')
+    team['total_gold'] = float(cols_game_stats_info[0].contents[2].strip().replace('k', '')) * 1000
+    return team
 
-parse_recap_tables(soup)
-#
-# blue_team = {'color': 'blue'}
-# red_team = {'color': 'red'}
-# soup_table = soup.find_all("table", {"class": "wikitable matchrecap1"})
-# for table in soup_table:
-#     recap_tables = table.find_all("table", {"class": "wikitable matchrecap2"})
-#     print(recap_tables)
-#     sys.exit()
-#     # for recap_table in recap_tables:
-#     #     print(recap_table)
-#     #     sys.exit()
-#     #     all_td = []
-#     #     rows = recap_table.find_all("tr")
-#     #     for index, row in enumerate(rows):
-#     #         cols = row.find_all('td')
-#     #         # find the correct td and the one with the background color of ccffcc is the team that won.
-#     #         if index == 1:
-#     #             try:
-#     #                 if cols[1]['style'] == 'background-color:#ccffcc':
-#     #                     blue_team['won'] = True
-#     #                     red_team['won'] = False
-#     #             except KeyError:
-#     #                 if cols[2]['style'] == 'background-color:#ccffcc':
-#     #                     blue_team['won'] = False
-#     #                     red_team['won'] = True
-#     #         for col in cols:
-#     #             if len(col.contents) == 3:
-#     #                 if 'div' not in str(col.contents[1]):
-#     #                     if col.span['title'] == 'Total Gold':
-#     #                         if len(col.contents[0].strip()) == 0:
-#     #                             total_gold = float(col.contents[2].string.strip().replace('k', '')) * 1000
-#     #                             blue_team['total_gold'] = total_gold
-#     #                         if len(col.contents[2].strip()) == 0:
-#     #                             total_gold = float(col.contents[0].string.strip().replace('k', '')) * 1000
-#     #                             red_team['total_gold'] = total_gold
-#     #                     if col.span['title'] == 'Total Kills':
-#     #                         if len(col.contents[0].strip()) == 0:
-#     #                             kills = int(col.contents[2].string.strip())
-#     #                             blue_team['kills'] = kills
-#     #                         if len(col.contents[2].strip()) == 0:
-#     #                             kills = int(col.contents[0].string.strip())
-#     #                             red_team['kills'] = kills
-#     #             all_td.append(str(col.contents[0]))
-#     #     all_td = list(map(lambda x: x.strip(), all_td))
-#     #     all_td = list(filter(lambda x: x.strip(), all_td))
-#     #     blue_team['team_name'] = all_td[0]
-#     #     red_team['team_name'] = all_td[3]
-#     #     game_length_minutes = all_td[7].replace(':', '.')
-#     #     blue_team['game_length_minutes'] = game_length_minutes
-#     #     red_team['game_length_minutes'] = game_length_minutes
-#     #     print(blue_team)
-#     #     print(red_team)
-#     #
+
+def main():
+    response = requests.get('http://lol.esportspedia.com/wiki/2015_LPL/Summer/Regular_Season/Scoreboards')
+    text = response.text
+    soup = BeautifulSoup(text)
+    merge_game_and_game_info(soup)
+
+if __name__ == "__main__":
+    main()
