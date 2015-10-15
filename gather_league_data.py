@@ -1,6 +1,3 @@
-import os
-from threading import Thread
-
 __author__ = 'Greg'
 
 import json
@@ -12,6 +9,7 @@ from sklearn import linear_model, cross_validation, datasets, preprocessing
 import requests
 from scipy.stats import binom
 from sqlalchemy import create_engine
+import scrap_esports_wiki
 
 # def predict_winner_of_group(team_one, team_two, team_three, team_four):
 
@@ -152,13 +150,18 @@ def get_team_stats_df(game_ids_all, has_cache=False):
         team_stats_df = check_cache(game_ids_all)
     else:
         team_stats_df = get_team_stats_in_dataframe(game_ids_all)
+    processed_team_stats_df = process_team_stats_df(team_stats_df)
+    return processed_team_stats_df
+
+
+def process_team_stats_df(team_stats_df):
     team_stats_df = team_stats_df.sort(['game_id', 'team_id'])
     key_stats = ['game_number', 'game_length_minutes', 'kills', 'deaths', 'assists', 'minions_killed', 'total_gold',
                 'K_A', 'A_over_K']
     team_stats_df['K_A'] = \
         team_stats_df['kills'] + team_stats_df['assists']
     team_stats_df['A_over_K'] = \
-        team_stats_df['assists'] + team_stats_df['kills']
+        team_stats_df['assists'] / team_stats_df['kills']
     team_grouped_by_game_id_df = team_stats_df.groupby(['game_id'], as_index=False).sum()
     team_stats_df = pandas.merge(team_stats_df, team_grouped_by_game_id_df, on=['game_id'])
     for key_stat in key_stats:
@@ -244,9 +247,22 @@ def get_team_stats_in_dataframe(game_ids_all):
                 team_stats_df = blue_team_df.append(red_team_df)
             else:
                 team_stats_df = team_stats_df.append(blue_team_df.append(red_team_df))
-    # print(team_stats_df)
     return team_stats_df
 
+
+def convert_games_to_df(games):
+    team_stats_df = None
+    x = 0
+    for game in games:
+        blue_team, red_team = game
+        blue_team_df = pandas.DataFrame(blue_team, index=[x])
+        red_team_df = pandas.DataFrame(red_team, index=[x + 1])
+        x += 2
+        if team_stats_df is None:
+            team_stats_df = blue_team_df.append(red_team_df)
+        else:
+            team_stats_df = team_stats_df.append(blue_team_df.append(red_team_df))
+    return team_stats_df
 
 def convert_league_stats_to_team_stats(game, winner_id, blue_team_id, red_team_id, game_id):
     blue_team = {}
@@ -342,26 +358,6 @@ def main():
                  7215, 7220, 7221, 7222, 7235, 7236, 7237, 7240, 7245, 7246, 7247, 7250, 7251, 7252, 7254, 7318, 7319,
                  7322, 7323, 7347, 7357, 7358, 7359, 7360, 7361, 7362, 7400, 7403, 7413, 7414, 7415, 7416, 7417, 7418,
                  7467, 7468, 7494, 7495, 7497, 7499, 7500, 7502, 7507, 7508, 7510, 7526, 7527, 7528, 7529, 7530, 7531]
-    # lpl_games = [6010, 6011, 6012, 6018, 6019, 6020, 6021, 6476, 6477, 6478, 6479, 6480, 6481, 6482, 6483, 6484, 6485,
-    #              6486, 6487, 6488, 6489, 6490, 6491, 6492, 6493, 6494, 6495, 6496, 6497, 6498, 6499, 6500, 6501, 6502,
-    #              6503, 6504, 6505, 6506, 6507, 6508, 6509, 6510, 6511, 6512, 6513, 6514, 6515, 6516, 6517, 6518, 6519,
-    #              6520, 6521, 6522, 6523, 6524, 6525, 6526, 6527, 6528, 6529, 6530, 6531, 6532, 6533, 6534, 6535, 6536,
-    #              6537, 6538, 6539, 6540, 6541, 6542, 6543, 6544, 6545, 6546, 6547, 6548, 6549, 6550, 6551, 6552, 6553,
-    #              6554, 6555, 6556, 6557, 6558, 6559, 6560, 6561, 6562, 6563, 6564, 6565, 6566, 6567, 6568, 6569, 6570,
-    #              6571, 6572, 6573, 6574, 6575, 6576, 6577, 6578, 6579, 6580, 6581, 6582, 6583, 6584, 6585, 6586, 6587,
-    #              6588, 6589, 6590, 6591, 6592, 6593, 6594, 6595, 6596, 6597, 6598, 6599, 6600, 6601, 6602, 6603, 6604,
-    #              6605, 6606, 6607, 6612, 6613, 6614, 6615, 6620, 6621, 6622, 6623, 6627, 6628, 6629, 6630, 6718, 6719,
-    #              6720, 6721, 6724, 6725, 6726, 6727, 6732, 6733, 6734, 6735, 6753, 6754, 6755, 6756, 6768, 6769, 6770,
-    #              6771, 6772, 6773, 6774, 6775, 6826, 6827, 6828, 6829, 6830, 6831, 6838, 6839, 6844, 6845, 6846, 6847,
-    #              6947, 6948, 6949, 6950, 6958, 6959, 6960, 6961, 6968, 6969, 6970, 6971, 7028, 7029, 7030, 7031, 7041,
-    #              7044, 7045, 7047, 7050, 7051, 7052, 7053, 7073, 7074, 7075, 7080, 7083, 7084, 7085, 7089, 7091, 7092,
-    #              7093, 7094, 7134, 7135, 7136, 7137, 7138, 7139, 7140, 7143, 7147, 7148, 7149, 7150, 7164, 7165, 7168,
-    #              7172, 7174, 7177, 7184, 7187, 7188, 7189, 7192, 7193, 7210, 7211, 7212, 7213, 7216, 7217, 7218, 7219,
-    #              7223, 7224, 7225, 7226, 7241, 7242, 7243, 7244, 7248, 7249, 7253, 7255, 7260, 7261, 7262, 7263, 7285,
-    #              7286, 7287, 7288, 7289, 7290, 7291, 7292, 7293, 7294, 7295, 7296, 7297, 7298, 7299, 7300, 7301, 7302,
-    #              7303, 7304, 7305, 7306, 7307, 7308, 7309, 7310, 7311, 7312, 7313, 7315, 7316, 7324, 7325, 7328, 7329,
-    #              7330, 7331, 7332, 7352, 7353, 7354, 7355, 7356, 7381, 7382, 7383, 7384, 7385, 7386, 7387, 7392, 7395,
-    #              7396, 7397, 7398, 7399, 7409, 7410, 7411, 7444, 7445, 7446, 7447]
     lms_games = [6370, 6371, 6372, 6373, 6374, 6375, 6376, 6377, 6378, 6379, 6380, 6381, 6382, 6383, 6384, 6385, 6386,
                  6387, 6388, 6389, 6390, 6391, 6392, 6393, 6394, 6395, 6396, 6397, 6398, 6399, 6400, 6401, 6402, 6403,
                  6404, 6405, 6406, 6407, 6408, 6409, 6410, 6411, 6412, 6413, 6414, 6415, 6416, 6417, 6418, 6419, 6420,
@@ -374,30 +370,47 @@ def main():
                  7437, 7438, 7439, 7469, 7470, 7471, 7484, 7519, 7520]
     lcs_team_df = get_team_stats_df(lcs_games, has_cache=True)
     lck_team_df = get_team_stats_df(lck_games, has_cache=True)
-    # lpl_team_df = get_team_stats_df(lpl_games, has_cache=True)
+    lpl_games = scrap_esports_wiki.get_games_from_webpage()
+    lpl_team_df = convert_games_to_df(lpl_games)
+    lpl_team_df_processed = process_team_stats_df(lpl_team_df)
     lms_team_df = get_team_stats_df(lms_games, has_cache=True)
     iwc_team_df = get_team_stats_df(iwc_games, has_cache=True)
+    all_team_df = pandas.concat([lcs_team_df, lck_team_df, lpl_team_df, lms_team_df, iwc_team_df])
     lcs_predictors, lcs_y_array = get_predictors_in_numpy_arrays(lcs_team_df, predictor_stats)
     lck_predictors, lck_y_array = get_predictors_in_numpy_arrays(lck_team_df, predictor_stats)
-    # lpl_predictors, lpl_y_array = get_predictors_in_numpy_arrays(lpl_team_df, predictor_stats)
+    lpl_predictors, lpl_y_array = get_predictors_in_numpy_arrays(lpl_team_df_processed, predictor_stats)
     lms_predictors, lms_y_array = get_predictors_in_numpy_arrays(lms_team_df, predictor_stats)
     iwc_predictors, iwc_y_array = get_predictors_in_numpy_arrays(iwc_team_df, predictor_stats)
     # Need to use concatenate for the predictors because we need an array of an arrays with predictors in each array
     predictors = numpy.concatenate((lcs_predictors, lck_predictors,  lms_predictors,
-                                    iwc_predictors))
+                                    iwc_predictors, lpl_predictors))
     # need to use append because we need an array of 0 and 1's
     y_array = numpy.append(lcs_y_array, lck_y_array)
     y_array = numpy.append(y_array, lms_y_array)
     y_array = numpy.append(y_array, iwc_y_array)
+    y_array = numpy.append(y_array, lpl_y_array)
     logreg = train_model(predictors, y_array)
     lolgreg_standard, scaler = train_model_standard_scaler(predictors, y_array)
     test_model(predictors, y_array)
-    # CLG vs TSM
-    real_array = get_latest_team_stats_numpy_array(2, 1, lcs_team_df, predictor_stats)
-    predict_on_model(logreg, real_array, 'CLG')
+    # # CLG vs TSM
+    # real_array = get_latest_team_stats_numpy_array(2, 1, lcs_team_df, predictor_stats)
+    # predict_on_model(logreg, real_array, 'CLG')
     # Fnatic vs Origen
-    real_array = get_latest_team_stats_numpy_array(68, 3862, lcs_team_df, predictor_stats)
-    predict_on_model(logreg, real_array, 'Fnatic')
+    real_array = get_latest_team_stats_numpy_array(3862, 68, all_team_df, predictor_stats)
+    predict_on_model(logreg, real_array, 'Origen')
+
+    # # Flash Wolves vs Origen
+    # real_array = get_latest_team_stats_numpy_array(1694, 3862, all_team_df, predictor_stats)
+    # predict_on_model(logreg, real_array, 'Flash Wolves')
+    # # SKTelecom T1 vs ahq e-Sports Club
+    # real_array = get_latest_team_stats_numpy_array(684, 949, all_team_df, predictor_stats)
+    # predict_on_model(logreg, real_array, 'SKTelecom T1')
+    # # # Fnatic vs EDward Gaming
+    # # real_array = get_latest_team_stats_numpy_array(68, 10006, all_team_df, predictor_stats)
+    # # predict_on_model(logreg, real_array, 'Fnatic')
+    # # KT Rolster vs KOO Tigers
+    # real_array = get_latest_team_stats_numpy_array(642, 3641, all_team_df, predictor_stats)
+    # predict_on_model(logreg, real_array, 'KT Rolster')
 
 if __name__ == "__main__":
     main()
