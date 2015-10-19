@@ -10,7 +10,7 @@ import requests
 
 # # Things we need real_name instead of team_name, team_id, game_id
 # [({'total_gold': 48300.0, 'won': False, 'color': 'blue', 'game_length_minutes': '33.32', 'deaths': 9, 'minions_killed': 952, 'assists': 11, 'team_name': 'Team WE', 'kills': 6},
-#   {'total_gold': 48300.0, 'won': True, 'color': 'red', 'game_length_minutes': '33.32', 'deaths': 6, 'minions_killed': 1089, 'assists': 29, 'team_name': 'Invictus Gaming', 'kills': 9})
+# {'total_gold': 48300.0, 'won': True, 'color': 'red', 'game_length_minutes': '33.32', 'deaths': 6, 'minions_killed': 1089, 'assists': 29, 'team_name': 'Invictus Gaming', 'kills': 9})
 
 def merge_game_and_game_info(soup):
     games, games_info = parse_recap_tables(soup)
@@ -25,6 +25,7 @@ def merge_game_and_game_info(soup):
         games_merge.append((game_blue_merged, game_red_merged))
     return games_merge
 
+
 # parse recap tables into a list of team tuples
 def parse_recap_tables(soup):
     games = []
@@ -34,10 +35,12 @@ def parse_recap_tables(soup):
         games_info.append(parse_game_info(recap_table))
     return games, games_info
 
+
 # given a column, get contents and strip garbage
 def parse_column(col):
     # assume col.contents has value we want at index 0
     return int(str(col.contents[0]).strip())
+
 
 # parse values from table and add to team
 def parse_player_stats(team, player_stat_table):
@@ -53,6 +56,7 @@ def parse_player_stats(team, player_stat_table):
     team['game_number'] = 1
     return team
 
+
 # color, game_table to
 # {'color': 'blue', 'assists': 37, 'deaths': 5, 'kills': 16,'minions_killed': 783}
 def parse_team_game(color, game_table):
@@ -61,6 +65,7 @@ def parse_team_game(color, game_table):
     for player_stat_table in player_stats_tables:
         parse_player_stats(team, player_stat_table)
     return team
+
 
 # list of tables to
 # ( {'color': 'blue', 'assists': 37,'deaths': 5, 'kills': 16,'minions_killed': 783}, {'color': 'red', 'assists': 37,
@@ -72,8 +77,6 @@ def parse_game(recap_tables):
     # game_tables[2] is red team
     game_tables = recap_tables.find_all("table", {"class": "prettytable matchrecap2"})
     return parse_team_game('blue', game_tables[1]), parse_team_game('red', game_tables[2])
-
-
 
 
 def parse_game_info(recap_table):
@@ -88,9 +91,13 @@ def parse_team_game_info(color, game_info_table):
     # row where team name is kept and how we determine the win vs the loss
     row_game_info = rows[1]
     cols = row_game_info.find_all('td')
+    rows_game_stats_info = rows[3]
+    cols_game_stats_info = rows_game_stats_info.find_all('td')
+    team['game_length_minutes'] = float(cols_game_stats_info[5].contents[0].strip().replace(':', '.').replace('!', '1'))
     # cols[0] = blue team_name, cols[1] = blue win or loss, cols[3] = red team name, cols[2] = red won or losee
     if team['color'] == 'blue':
         team['team_name'] = cols[0].contents[0].strip()
+        team['total_gold'] = float(cols_game_stats_info[10].contents[0].strip().replace('k', '')) * 1000
         try:
             if cols[1]['style'] == 'background-color:#ccffcc':
                 team['won'] = True
@@ -98,16 +105,14 @@ def parse_team_game_info(color, game_info_table):
             team['won'] = False
     elif team['color'] == 'red':
         team['team_name'] = cols[3].contents[0].strip()
+        team['total_gold'] = float(cols_game_stats_info[0].contents[2].strip().replace('k', '')) * 1000
         try:
             if cols[2]['style'] == 'background-color:#ccffcc':
                 team['won'] = True
         except KeyError:
             team['won'] = False
-    rows_game_stats_info = rows[3]
-    cols_game_stats_info = rows_game_stats_info.find_all('td')
-    team['game_length_minutes'] = float(cols_game_stats_info[5].contents[0].strip().replace(':', '.').replace('!', '1'))
-    team['total_gold'] = float(cols_game_stats_info[0].contents[2].strip().replace('k', '')) * 1000
     return team
+
 
 def get_all_web_pages(web_page, pages, game_ids, team_name_ids):
     all_merge_games = []
@@ -136,11 +141,18 @@ def assign_game_id_and_team_id(all_merge_games, game_ids, team_name_ids):
     return all_merge_games
 
 
-
-def get_games_from_webpage():
+def get_games_from_webpage(game_ids):
     lpl_team_id_mapping = {'Oh My God': 10000, 'Unlimited Potential': 10001, 'Masters 3': 10002, 'Vici Gaming': 10003,
-                          'Royal Never Give Up': 10004, 'Team WE': 10005, 'EDward Gaming': 10006, 'LGD Gaming': 10007,
-                          'Team King':10008, 'Invictus Gaming': 10009, 'Qiao Gu Reapers': 10010, 'Snake eSports': 10011}
+                           'Royal Never Give Up': 10004, 'Team WE': 10005, 'EDward Gaming': 10006, 'LGD Gaming': 10007,
+                           'Team King': 10008, 'Invictus Gaming': 10009, 'Qiao Gu Reapers': 10010,
+                           'Snake eSports': 10011}
+    pages = 11
+    web_page = 'http://lol.esportspedia.com/wiki/2015_LPL/Summer/Regular_Season/Scoreboards'
+    print(get_all_web_pages(web_page, pages, game_ids, lpl_team_id_mapping))
+    return get_all_web_pages(web_page, pages, game_ids, lpl_team_id_mapping)
+
+
+def main():
     lpl_games = [6539, 6540, 6541, 6542, 6543, 6544, 6545, 6546, 6547, 6548, 6549, 6550, 6551, 6552, 6553,
                  6554, 6555, 6556, 6557, 6558, 6559, 6560, 6561, 6562, 6563, 6564, 6565, 6566, 6567, 6568, 6569, 6570,
                  6571, 6572, 6573, 6574, 6575, 6576, 6577, 6578, 6579, 6580, 6581, 6582, 6583, 6584, 6585, 6586, 6587,
@@ -157,13 +169,8 @@ def get_games_from_webpage():
                  7303, 7304, 7305, 7306, 7307, 7308, 7309, 7310, 7311, 7312, 7313, 7315, 7316, 7324, 7325, 7328, 7329,
                  7330, 7331, 7332, 7352, 7353, 7354, 7355, 7356, 7381, 7382, 7383, 7384, 7385, 7386, 7387, 7392, 7395,
                  7396, 7397, 7398, 7399, 7409, 7410, 7411, 7444, 7445, 7446, 7447]
-    pages = 11
-    web_page = 'http://lol.esportspedia.com/wiki/2015_LPL/Summer/Regular_Season/Scoreboards'
-    print(get_all_web_pages(web_page, pages, lpl_games, lpl_team_id_mapping))
-    return get_all_web_pages(web_page, pages, lpl_games, lpl_team_id_mapping)
+    get_games_from_webpage(lpl_games)
 
-def main():
-    get_games_from_webpage()
 
 if __name__ == "__main__":
     main()
