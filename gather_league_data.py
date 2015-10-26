@@ -174,7 +174,7 @@ def process_team_stats_df(team_stats_df):
             team_stats_df['csum_total_{}'.format(key_stat)] - team_stats_df[key_stat_y]
         team_stats_df['csum_prev_avg_{}'.format(key_stat)] = \
             team_stats_df['csum_prev_{}'.format(key_stat)] / team_stats_df['csum_prev_game_number']
-        team_stats_df['per_min_()'.format(key_stat)] = team_stats_df[key_stat_x] / team_stats_df[
+        team_stats_df['per_min_{}'.format(key_stat)] = team_stats_df[key_stat_x] / team_stats_df[
             'game_length_minutes_x']
         team_stats_df['csum_prev_percent_{}'.format(key_stat)] = \
             team_stats_df['csum_prev_{}'.format(key_stat)] / team_stats_df['csum_total_prev_{}'.format(key_stat)]
@@ -232,7 +232,7 @@ def get_team_stats_in_dataframe(game_ids_all, data_source):
     team_stats_df = None
     x = 0
     if data_source == 'web':
-        games = scrap_esports_wiki.get_games_from_webpage(game_ids_all)
+        games = scrap_esports_wiki.get_games_from_lpl_webpage(game_ids_all)
         team_stats_df = convert_games_to_df(games)
     else:
         for game_id in game_ids_all:
@@ -392,12 +392,16 @@ def main():
     lpl_team_df = get_team_stats_df(lpl_games, 'web', has_cache=True)
     lms_team_df = get_team_stats_df(lms_games, 'esports_api', has_cache=True)
     iwc_team_df = get_team_stats_df(iwc_games, 'esports_api', has_cache=True)
-    all_team_df = pandas.concat([lcs_team_df, lck_team_df, lpl_team_df, lms_team_df, iwc_team_df])
+    worlds_team_df = get_team_stats_df(lpl_games, 'web_worlds', has_cache=True)
+    all_team_df = pandas.concat([lcs_team_df, lck_team_df, lpl_team_df, lms_team_df, iwc_team_df, worlds_team_df])
+    conn = create_engine('postgresql://postgres:postgres@localhost:5432/postgres')
+    all_team_df.to_sql('team_calculated_stats', conn, if_exists='replace')
     lcs_predictors, lcs_y_array = get_predictors_in_numpy_arrays(lcs_team_df, predictor_stats)
     lck_predictors, lck_y_array = get_predictors_in_numpy_arrays(lck_team_df, predictor_stats)
     lpl_predictors, lpl_y_array = get_predictors_in_numpy_arrays(lpl_team_df, predictor_stats)
     lms_predictors, lms_y_array = get_predictors_in_numpy_arrays(lms_team_df, predictor_stats)
     iwc_predictors, iwc_y_array = get_predictors_in_numpy_arrays(iwc_team_df, predictor_stats)
+    worlds_predictors, worlds_y_array = get_predictors_in_numpy_arrays(worlds_team_df, predictor_stats)
     # Need to use concatenate for the predictors because we need an array of an arrays with predictors in each array
     predictors = numpy.concatenate((lcs_predictors, lck_predictors, lpl_predictors, lms_predictors,
                                     iwc_predictors))
@@ -406,6 +410,7 @@ def main():
     y_array = numpy.append(y_array, lms_y_array)
     y_array = numpy.append(y_array, iwc_y_array)
     y_array = numpy.append(y_array, lpl_y_array)
+    y_array = numpy.append(y_array, worlds_y_array)
     logreg = train_model(predictors, y_array)
     lolgreg_standard, scaler = train_model_standard_scaler(predictors, y_array)
     test_model(predictors, y_array)

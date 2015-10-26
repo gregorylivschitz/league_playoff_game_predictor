@@ -114,7 +114,7 @@ def parse_team_game_info(color, game_info_table):
     return team
 
 
-def get_all_web_pages(web_page, pages, game_ids, team_name_ids):
+def get_lpl_web_pages(web_page, pages, game_ids, team_name_ids):
     all_merge_games = []
     for page in range(1, pages + 1):
         if page == 1:
@@ -141,15 +141,17 @@ def assign_game_id_and_team_id(all_merge_games, game_ids, team_name_ids):
     return all_merge_games
 
 
-def get_games_from_webpage(game_ids):
+def get_games_from_lpl_webpage(game_ids):
     lpl_team_id_mapping = {'Oh My God': 10000, 'Unlimited Potential': 10001, 'Masters 3': 10002, 'Vici Gaming': 10003,
                            'Royal Never Give Up': 10004, 'Team WE': 10005, 'EDward Gaming': 10006, 'LGD Gaming': 10007,
                            'Team King': 10008, 'Invictus Gaming': 10009, 'Qiao Gu Reapers': 10010,
                            'Snake eSports': 10011}
     pages = 11
     web_page = 'http://lol.esportspedia.com/wiki/2015_LPL/Summer/Regular_Season/Scoreboards'
-    print(get_all_web_pages(web_page, pages, game_ids, lpl_team_id_mapping))
-    return get_all_web_pages(web_page, pages, game_ids, lpl_team_id_mapping)
+    print(get_lpl_web_pages(web_page, pages, game_ids, lpl_team_id_mapping))
+    return get_lpl_web_pages(web_page, pages, game_ids, lpl_team_id_mapping)
+
+def get_games_from_words_webpage(game_ids):
 
 
 def main():
@@ -169,7 +171,7 @@ def main():
                  7303, 7304, 7305, 7306, 7307, 7308, 7309, 7310, 7311, 7312, 7313, 7315, 7316, 7324, 7325, 7328, 7329,
                  7330, 7331, 7332, 7352, 7353, 7354, 7355, 7356, 7381, 7382, 7383, 7384, 7385, 7386, 7387, 7392, 7395,
                  7396, 7397, 7398, 7399, 7409, 7410, 7411, 7444, 7445, 7446, 7447]
-    get_games_from_webpage(lpl_games)
+    get_games_from_lpl_webpage(lpl_games)
 
 
 if __name__ == "__main__":
