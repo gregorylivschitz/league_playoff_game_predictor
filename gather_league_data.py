@@ -58,18 +58,18 @@ def train_model_standard_scaler(predictors, y_array):
     return (logreg, scale)
 
 
-def get_latest_team_stats_numpy_array(team_a, team_b, team_stats_df, predictor_stats):
+def get_latest_team_stats_numpy_array(red_team, blue_team, team_stats_df, predictor_stats):
     game_predictor_stats = []
     # team_stats_df.to_csv('test_team_stats')
     # team_stats_df = team_stats_df[team_stats_df.team_id.isin([2, 1])]
-    team_stats_df_a = team_stats_df[team_stats_df['team_id_x'] == team_a]
-    team_stats_df_b = team_stats_df[team_stats_df['team_id_x'] == team_b]
-    team_stats_df_a = team_stats_df_a.sort(['game_id'], ascending=False).head(1)
-    team_stats_df_b = team_stats_df_b.sort(['game_id'], ascending=False).head(1)
-    dict_team_a = team_stats_df_a.to_dict('records')[0]
-    dict_team_b = team_stats_df_b.to_dict('records')[0]
+    team_stats_df_red = team_stats_df[team_stats_df['team_id_x'] == red_team]
+    team_stats_df_blue = team_stats_df[team_stats_df['team_id_x'] == blue_team]
+    team_stats_df_red = team_stats_df_red.sort(['game_id'], ascending=False).head(1)
+    team_stats_df_blue = team_stats_df_blue.sort(['game_id'], ascending=False).head(1)
+    dict_team_red = team_stats_df_red.to_dict('records')[0]
+    dict_team_blue = team_stats_df_blue.to_dict('records')[0]
     for predictor_stat in predictor_stats:
-        dict_team_difference = dict_team_a[predictor_stat] - dict_team_b[predictor_stat]
+        dict_team_difference = dict_team_red[predictor_stat] - dict_team_blue[predictor_stat]
         game_predictor_stats.append(dict_team_difference)
     predictor_numpy_array = numpy.array([game_predictor_stats])
     print(predictor_numpy_array)
@@ -231,8 +231,11 @@ def get_predictors(team_stats_df):
 def get_team_stats_in_dataframe(game_ids_all, data_source):
     team_stats_df = None
     x = 0
-    if data_source == 'web':
+    if data_source == 'web_lpl':
         games = scrap_esports_wiki.get_games_from_lpl_webpage(game_ids_all)
+        team_stats_df = convert_games_to_df(games)
+    elif data_source == 'web_worlds':
+        games = scrap_esports_wiki.get_games_from_words_webpage(game_ids_all)
         team_stats_df = convert_games_to_df(games)
     else:
         for game_id in game_ids_all:
@@ -387,12 +390,13 @@ def main():
                  7303, 7304, 7305, 7306, 7307, 7308, 7309, 7310, 7311, 7312, 7313, 7315, 7316, 7324, 7325, 7328, 7329,
                  7330, 7331, 7332, 7352, 7353, 7354, 7355, 7356, 7381, 7382, 7383, 7384, 7385, 7386, 7387, 7392, 7395,
                  7396, 7397, 7398, 7399, 7409, 7410, 7411, 7444, 7445, 7446, 7447]
+    world_games = range(9000, 9063)
     lcs_team_df = get_team_stats_df(lcs_games, 'esports_api', has_cache=True)
     lck_team_df = get_team_stats_df(lck_games, 'esports_api', has_cache=True)
-    lpl_team_df = get_team_stats_df(lpl_games, 'web', has_cache=True)
+    lpl_team_df = get_team_stats_df(lpl_games, 'web_lpl', has_cache=True)
     lms_team_df = get_team_stats_df(lms_games, 'esports_api', has_cache=True)
     iwc_team_df = get_team_stats_df(iwc_games, 'esports_api', has_cache=True)
-    worlds_team_df = get_team_stats_df(lpl_games, 'web_worlds', has_cache=True)
+    worlds_team_df = get_team_stats_df(world_games, 'web_worlds', has_cache=True)
     all_team_df = pandas.concat([lcs_team_df, lck_team_df, lpl_team_df, lms_team_df, iwc_team_df, worlds_team_df])
     conn = create_engine('postgresql://postgres:postgres@localhost:5432/postgres')
     all_team_df.to_sql('team_calculated_stats', conn, if_exists='replace')
@@ -403,8 +407,8 @@ def main():
     iwc_predictors, iwc_y_array = get_predictors_in_numpy_arrays(iwc_team_df, predictor_stats)
     worlds_predictors, worlds_y_array = get_predictors_in_numpy_arrays(worlds_team_df, predictor_stats)
     # Need to use concatenate for the predictors because we need an array of an arrays with predictors in each array
-    predictors = numpy.concatenate((lcs_predictors, lck_predictors, lpl_predictors, lms_predictors,
-                                    iwc_predictors))
+    predictors = numpy.concatenate((lcs_predictors, lck_predictors, lms_predictors, iwc_predictors, lpl_predictors,
+                                    worlds_predictors))
     # need to use append because we need an array of 0 and 1's
     y_array = numpy.append(lcs_y_array, lck_y_array)
     y_array = numpy.append(y_array, lms_y_array)
@@ -415,19 +419,11 @@ def main():
     lolgreg_standard, scaler = train_model_standard_scaler(predictors, y_array)
     test_model(predictors, y_array)
 
-    # Flash Wolves vs Origen
-    real_array = get_latest_team_stats_numpy_array(1694, 3862, all_team_df, predictor_stats)
-    predict_on_model(logreg, real_array, 'Flash Wolves')
-    # SKTelecom T1 vs ahq e-Sports Club
-    real_array = get_latest_team_stats_numpy_array(684, 949, all_team_df, predictor_stats)
+    # SKTelecom T1 vs KOO Tigers
+    # left is red
+    # right is blue
+    real_array = get_latest_team_stats_numpy_array(684, 3641, all_team_df, predictor_stats)
     predict_on_model(logreg, real_array, 'SKTelecom T1')
-    # Fnatic vs EDward Gaming
-    real_array = get_latest_team_stats_numpy_array(68, 10006, all_team_df, predictor_stats)
-    predict_on_model(logreg, real_array, 'Fnatic')
-    # KT Rolster vs KOO Tigers
-    real_array = get_latest_team_stats_numpy_array(642, 3641, all_team_df, predictor_stats)
-    predict_on_model(logreg, real_array, 'KT Rolster')
-
 
 if __name__ == "__main__":
     main()

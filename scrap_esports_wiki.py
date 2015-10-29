@@ -126,8 +126,8 @@ def get_lpl_web_pages(web_page, pages, game_ids, team_name_ids):
         soup = BeautifulSoup(text)
         merge_games = merge_game_and_game_info(soup)
         all_merge_games += merge_games
-    assign_game_id_and_team_id(all_merge_games, game_ids, team_name_ids)
-    return all_merge_games
+    all_merge_games_with_game_id = assign_game_id_and_team_id(all_merge_games, game_ids, team_name_ids)
+    return all_merge_games_with_game_id
 
 
 def assign_game_id_and_team_id(all_merge_games, game_ids, team_name_ids):
@@ -151,7 +151,99 @@ def get_games_from_lpl_webpage(game_ids):
     print(get_lpl_web_pages(web_page, pages, game_ids, lpl_team_id_mapping))
     return get_lpl_web_pages(web_page, pages, game_ids, lpl_team_id_mapping)
 
+
 def get_games_from_words_webpage(game_ids):
+    team_id_mapping = {'LGD Gaming': 10007,
+                       'KOO Tigers': 3641,
+                       'Midnight Sun e-Sports': 3679,
+                       'Oh My God': 10000,
+                       'Gambit Gaming': 69,
+                       'Invictus Gaming': 10009,
+                       'Ever': 4989,
+                       'paiN Gaming': 583,
+                       'SBENU SONICBOOM': 4327,
+                       'Machi': 2643,
+                       'Masters 3': 10002,
+                       'Team King': 10008,
+                       'Team Impulse': 3657,
+                       'Longzhu Incredible Miracle': 889,
+                       'Origen': 3862,
+                       'H2K': 1273,
+                       'Xenics Storm': 1010,
+                       'Dark Wolves': 4987,
+                       'Reason Gaming': 1274,
+                       'Team Liquid': 3654,
+                       'Winners': 4326,
+                       'Mousesports': 252,
+                       'Team SoloMid': 1,
+                       'Rebels Anarchy': 4325,
+                       'Team Imagine': 4420,
+                       'Samsung Galaxy': 3642,
+                       'Snake eSports': 10011,
+                       'Royal Never Give Up': 10004,
+                       'Kaos Latin Gamers': 4876,
+                       'Gamers2': 4035,
+                       'Flash Wolves': 1694,
+                       'Vici Gaming': 10003,
+                       'SK Gaming': 67,
+                       'Copenhagen Wolves Academy': 3865,
+                       'Team Coast': 5,
+                       'Team WE': 10005,
+                       'Giants Gaming': 71,
+                       'Jin Air Green Wings': 998,
+                       'Enemy Esports': 3494,
+                       'Cloud9': 304,
+                       'NaJin e-mFire': 895,
+                       'Counter Logic Gaming': 2,
+                       'KT Rolster': 642,
+                       'ROCCAT': 1242,
+                       'Elements': 3659,
+                       'Winterfox': 3658,
+                       'SKTelecom T1': 684,
+                       'Detonation FocusMe': 4875,
+                       'Unlimited Potential': 10001,
+                       'Gravity': 3656,
+                       'CJ ENTUS': 640,
+                       'EDward Gaming': 10006,
+                       'Dark Passage': 585,
+                       'Bangkok Titans': 1024,
+                       'Chiefs eSports Club': 4874,
+                       'Team 8': 1258,
+                       'Qiao Gu Reapers': 10010,
+                       'Hard Random': 4873,
+                       'Fnatic': 68,
+                       'Team Dignitas': 3,
+                       'Copenhagen Wolves': 1100,
+                       'Taipei Assassins': 974,
+                       'Assassin Sniper': 4360,
+                       'Team Dragon Knights': 3856,
+                       'Logitech G Sniper': 3677,
+                       'ahq e-Sports Club': 949,
+                       'Unicorns of Love': 1281,
+                       'HongKong Esports': 3680,
+                       'Team Fusion': 3495}
+    team_mappings = {'H2k-Gaming': 'H2K', 'SK Telecom T1': 'SKTelecom T1'}
+    all_merge_games = []
+    set_team = set()
+    pages = ['', '/Group_Stage/Group_B', '/Group_Stage/Group_C', '/Group_Stage/Group_D', '/Bracket_Stage']
+    # pages = ['']
+    base_page = 'http://lol.esportspedia.com/wiki/2015_Season_World_Championship/Scoreboards'
+    for page in pages:
+        web_page = '{}{}'.format(base_page, page)
+        response = requests.get(web_page)
+        text = response.text
+        soup = BeautifulSoup(text)
+        merge_games = merge_game_and_game_info(soup)
+        # set_team.add(merge_games['team_name'])
+        all_merge_games += merge_games
+        for merge_game in merge_games:
+            if team_mappings.get(merge_game[0]['team_name']) is not None:
+                merge_game[0]['team_name'] = team_mappings[merge_game[0]['team_name']]
+            if team_mappings.get(merge_game[1]['team_name']) is not None:
+                merge_game[1]['team_name'] = team_mappings[merge_game[1]['team_name']]
+    all_merge_games_with_game_id = assign_game_id_and_team_id(all_merge_games, game_ids, team_id_mapping)
+    print(all_merge_games_with_game_id)
+    return all_merge_games_with_game_id
 
 
 def main():
@@ -171,7 +263,9 @@ def main():
                  7303, 7304, 7305, 7306, 7307, 7308, 7309, 7310, 7311, 7312, 7313, 7315, 7316, 7324, 7325, 7328, 7329,
                  7330, 7331, 7332, 7352, 7353, 7354, 7355, 7356, 7381, 7382, 7383, 7384, 7385, 7386, 7387, 7392, 7395,
                  7396, 7397, 7398, 7399, 7409, 7410, 7411, 7444, 7445, 7446, 7447]
-    get_games_from_lpl_webpage(lpl_games)
+    world_games = range(9000, 9069)
+    # get_games_from_words_webpage(lpl_games)
+    get_games_from_words_webpage(world_games)
 
 
 if __name__ == "__main__":
