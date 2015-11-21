@@ -1,3 +1,5 @@
+import sys
+
 __author__ = 'Greg'
 
 from bs4 import BeautifulSoup, NavigableString
@@ -11,6 +13,10 @@ import requests
 # # Things we need real_name instead of team_name, team_id, game_id
 # [({'total_gold': 48300.0, 'won': False, 'color': 'blue', 'game_length_minutes': '33.32', 'deaths': 9, 'minions_killed': 952, 'assists': 11, 'team_name': 'Team WE', 'kills': 6},
 # {'total_gold': 48300.0, 'won': True, 'color': 'red', 'game_length_minutes': '33.32', 'deaths': 6, 'minions_killed': 1089, 'assists': 29, 'team_name': 'Invictus Gaming', 'kills': 9})
+
+# What player stats should look like
+# [{'game_id': 500, 'player_name': 'xPeke', 'kills': 2, 'deaths': 3, 'assists': 5, 'gold': 20000, 'minions_killed': 370, 'color': blue},
+# {'game_id': 500, 'player_name': 'xPeke', 'kills': 2, 'deaths': 3, 'assists': 5, 'gold': 20000, 'minions_killed': 370, 'color': blue}]
 
 def merge_game_and_game_info(soup):
     games, games_info = parse_recap_tables(soup)
@@ -37,25 +43,44 @@ def parse_recap_tables(soup):
 
 
 # given a column, get contents and strip garbage
-def parse_column(col):
+def parse_column_stats(col):
     # assume col.contents has value we want at index 0
     return int(str(col.contents[0]).strip())
 
+def parse_column_player_name(col):
+    # assume col.contents has value we want at index 0
+    return str(col.contents[1].contents[0]).strip()
+
+def parse_champion_name(col):
+    return str(col.contents[0]['title'].strip())
 
 # parse values from table and add to team
-def parse_player_stats(team, player_stat_table):
+def parse_player_stats_add_to_team(team, player_stat_table):
     rows = player_stat_table.find_all("tr")
     # assume len(row) == 1
     row = rows[0]
     cols = row.find_all('td')
+    player = parse_player_stats(player_stat_table)
     # assume len(cols) == 11
-    team['minions_killed'] += parse_column(cols[10])
-    team['assists'] += parse_column(cols[6])
-    team['deaths'] += parse_column(cols[5])
-    team['kills'] += parse_column(cols[4])
+    team['minions_killed'] += player['minions_killed']
+    team['assists'] += player['assists']
+    team['deaths'] += player['deaths']
+    team['kills'] += player['kills']
     team['game_number'] = 1
+    print(team)
     return team
 
+
+def parse_player_stats(player_stat_table):
+    rows = player_stat_table.find_all("tr")
+    # assume len(row) == 1
+    row = rows[0]
+    cols = row.find_all('td')
+    # print('The col is {} and the stat is {}'.format(3, parse_column(cols[3])))
+    player = {'player_name': parse_column_player_name(cols[1]), 'champion_played': parse_champion_name(cols[0]),
+              'minions_killed': parse_column_stats(cols[10]), 'assists': parse_column_stats(cols[6]),
+              'deaths': parse_column_stats(cols[5]), 'kills': parse_column_stats(cols[4])}
+    return player
 
 # color, game_table to
 # {'color': 'blue', 'assists': 37, 'deaths': 5, 'kills': 16,'minions_killed': 783}
@@ -63,7 +88,7 @@ def parse_team_game(color, game_table):
     team = {'color': color, 'assists': 0, 'deaths': 0, 'kills': 0, 'minions_killed': 0}
     player_stats_tables = game_table.find_all("table", {"class": "prettytable"})
     for player_stat_table in player_stats_tables:
-        parse_player_stats(team, player_stat_table)
+        parse_player_stats_add_to_team(team, player_stat_table)
     return team
 
 
@@ -224,9 +249,7 @@ def get_games_from_words_webpage(game_ids):
                        'Team Fusion': 3495}
     team_mappings = {'H2k-Gaming': 'H2K', 'SK Telecom T1': 'SKTelecom T1'}
     all_merge_games = []
-    set_team = set()
     pages = ['', '/Group_Stage/Group_B', '/Group_Stage/Group_C', '/Group_Stage/Group_D', '/Bracket_Stage']
-    # pages = ['']
     base_page = 'http://lol.esportspedia.com/wiki/2015_Season_World_Championship/Scoreboards'
     for page in pages:
         web_page = '{}{}'.format(base_page, page)
@@ -263,7 +286,7 @@ def main():
                  7303, 7304, 7305, 7306, 7307, 7308, 7309, 7310, 7311, 7312, 7313, 7315, 7316, 7324, 7325, 7328, 7329,
                  7330, 7331, 7332, 7352, 7353, 7354, 7355, 7356, 7381, 7382, 7383, 7384, 7385, 7386, 7387, 7392, 7395,
                  7396, 7397, 7398, 7399, 7409, 7410, 7411, 7444, 7445, 7446, 7447]
-    world_games = range(9000, 9069)
+    world_games = range(9000, 9073)
     # get_games_from_words_webpage(lpl_games)
     get_games_from_words_webpage(world_games)
 

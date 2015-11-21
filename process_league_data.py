@@ -390,7 +390,7 @@ def main():
                  7303, 7304, 7305, 7306, 7307, 7308, 7309, 7310, 7311, 7312, 7313, 7315, 7316, 7324, 7325, 7328, 7329,
                  7330, 7331, 7332, 7352, 7353, 7354, 7355, 7356, 7381, 7382, 7383, 7384, 7385, 7386, 7387, 7392, 7395,
                  7396, 7397, 7398, 7399, 7409, 7410, 7411, 7444, 7445, 7446, 7447]
-    world_games = range(9000, 9063)
+    world_games = range(9000, 9069)
     lcs_team_df = get_team_stats_df(lcs_games, 'esports_api', has_cache=True)
     lck_team_df = get_team_stats_df(lck_games, 'esports_api', has_cache=True)
     lpl_team_df = get_team_stats_df(lpl_games, 'web_lpl', has_cache=True)
