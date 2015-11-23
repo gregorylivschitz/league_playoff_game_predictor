@@ -18,8 +18,14 @@ import requests
 # [{'game_id': 500, 'player_name': 'xPeke', 'kills': 2, 'deaths': 3, 'assists': 5, 'gold': 20000, 'minions_killed': 370, 'color': blue},
 # {'game_id': 500, 'player_name': 'xPeke', 'kills': 2, 'deaths': 3, 'assists': 5, 'gold': 20000, 'minions_killed': 370, 'color': blue}]
 
+def merge_player_and_game_info(soup):
+    players, game_info = parse_recap_tables_for_players(soup)
+    game_merge = []
+
+
+
 def merge_game_and_game_info(soup):
-    games, games_info = parse_recap_tables(soup)
+    games, games_info = parse_recap_tables_for_games(soup)
     if len(games) != len(games_info):
         raise ValueError('merging error games and games_info did not match something is wrong with the html')
     games_merge = []
@@ -33,7 +39,7 @@ def merge_game_and_game_info(soup):
 
 
 # parse recap tables into a list of team tuples
-def parse_recap_tables(soup):
+def parse_recap_tables_for_games(soup):
     games = []
     games_info = []
     for recap_table in soup.find_all("table", {"class": "wikitable matchrecap1"}):
@@ -41,25 +47,32 @@ def parse_recap_tables(soup):
         games_info.append(parse_game_info(recap_table))
     return games, games_info
 
+def parse_recap_tables_for_players(soup):
+    players = []
+    games_info = []
+    for recap_table in soup.find_all("table", {"class": "wikitable matchrecap1"}):
+        players.append(parse_player_stats_with_color(recap_table))
+        games_info.append(parse_game_info(recap_table))
+    return players, games_info
 
 # given a column, get contents and strip garbage
 def parse_column_stats(col):
     # assume col.contents has value we want at index 0
     return int(str(col.contents[0]).strip())
 
+
 def parse_column_player_name(col):
     # assume col.contents has value we want at index 0
     return str(col.contents[1].contents[0]).strip()
 
+
 def parse_champion_name(col):
     return str(col.contents[0]['title'].strip())
+
 
 # parse values from table and add to team
 def parse_player_stats_add_to_team(team, player_stat_table):
     rows = player_stat_table.find_all("tr")
-    # assume len(row) == 1
-    row = rows[0]
-    cols = row.find_all('td')
     player = parse_player_stats(player_stat_table)
     # assume len(cols) == 11
     team['minions_killed'] += player['minions_killed']
@@ -67,7 +80,6 @@ def parse_player_stats_add_to_team(team, player_stat_table):
     team['deaths'] += player['deaths']
     team['kills'] += player['kills']
     team['game_number'] = 1
-    print(team)
     return team
 
 
@@ -81,6 +93,13 @@ def parse_player_stats(player_stat_table):
               'minions_killed': parse_column_stats(cols[10]), 'assists': parse_column_stats(cols[6]),
               'deaths': parse_column_stats(cols[5]), 'kills': parse_column_stats(cols[4])}
     return player
+
+def parse_player_stats_with_color(color, game_table):
+    player_stats_tables = game_table.find_all("table", {"class": "prettytable"})
+    player = parse_player_stats(player_stats_tables)
+    player['color'] = color
+    return player
+
 
 # color, game_table to
 # {'color': 'blue', 'assists': 37, 'deaths': 5, 'kills': 16,'minions_killed': 783}
@@ -103,6 +122,9 @@ def parse_game(recap_tables):
     game_tables = recap_tables.find_all("table", {"class": "prettytable matchrecap2"})
     return parse_team_game('blue', game_tables[1]), parse_team_game('red', game_tables[2])
 
+def parse_player(recap_tables):
+    game_tables = recap_tables.find_all("table", {"class": "prettytable matchrecap2"})
+    return parse_team_game('blue', game_tables[1]), parse_team_game('red', game_tables[2])
 
 def parse_game_info(recap_table):
     # should only be 1 info_table
@@ -176,8 +198,15 @@ def get_games_from_lpl_webpage(game_ids):
     print(get_lpl_web_pages(web_page, pages, game_ids, lpl_team_id_mapping))
     return get_lpl_web_pages(web_page, pages, game_ids, lpl_team_id_mapping)
 
+def get_players_from_worlds_webpage(game_id_initial, base_page, pages):
+    for page in pages:
+        web_page = '{}{}'.format(base_page, page)
+        response = requests.get(web_page)
+        text = response.text
+        soup = BeautifulSoup(text)
 
-def get_games_from_words_webpage(game_ids):
+
+def get_games_from_worlds_webpage(game_ids):
     team_id_mapping = {'LGD Gaming': 10007,
                        'KOO Tigers': 3641,
                        'Midnight Sun e-Sports': 3679,

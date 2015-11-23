@@ -235,7 +235,7 @@ def get_team_stats_in_dataframe(game_ids_all, data_source):
         games = scrap_esports_wiki.get_games_from_lpl_webpage(game_ids_all)
         team_stats_df = convert_games_to_df(games)
     elif data_source == 'web_worlds':
-        games = scrap_esports_wiki.get_games_from_words_webpage(game_ids_all)
+        games = scrap_esports_wiki.get_games_from_worlds_webpage(game_ids_all)
         team_stats_df = convert_games_to_df(games)
     else:
         for game_id in game_ids_all:
