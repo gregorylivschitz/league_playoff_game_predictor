@@ -22,33 +22,21 @@ __author__ = 'Greg'
 # {'game_id': 500, 'player_name': 'xPeke', 'kills': 2, 'deaths': 3, 'assists': 5, 'gold': 20000, 'minions_killed': 370, 'color': blue}]
 
 engine = create_engine('postgresql://postgres:postgres@localhost:5432/yolobid')
-Session = sessionmaker(bind=engine)
+Session = sessionmaker(bind=engine, autoflush=False)
 session = Session()
 
-# def merge_player_and_game_info(soup):
-#     players, game_info = parse_recap_tables_for_players(soup)
-#     game_merge = []
-
-def merge_game_and_game_info(soup, data_source):
-    games, games_info = parse_recap_tables_for_games(soup, data_source)
-    if len(games) != len(games_info):
-        raise ValueError('merging error games and games_info did not match something is wrong with the html')
-    games_merge = []
-    for game_index, game in enumerate(games):
-        game_blue_team, game_red_team = game
-        game_info_blue_team, game_info_red_team = games_info[game_index]
-        game_blue_merged = dict(list(game_blue_team.items()) + list(game_info_blue_team.items()))
-        game_red_merged = dict(list(game_red_team.items()) + list(game_info_red_team.items()))
-        games_merge.append((game_blue_merged, game_red_merged))
-    return games_merge
+def process_data_source(soup, data_source):
+    data_source = parse_recap_tables_for_games(soup, data_source)
+    return data_source
 
 
 # parse recap tables into a list of team tuples
 def parse_recap_tables_for_games(soup, data_source):
-    game = Game()
     for recap_table in soup.find_all("table", {"class": "wikitable matchrecap1"}):
-        game = parse_game_info(recap_table, game)
-        games.append(parse_game(recap_table, game))
+        game = parse_game_info(recap_table)
+        session.add(game)
+        data_source.games.append(parse_game(recap_table, game))
+    return data_source
     # return games, games_info
 
 
@@ -72,11 +60,12 @@ def parse_player_stats_add_to_team(team, player_stat_table):
     rows = player_stat_table.find_all("tr")
     player = parse_player_stats(player_stat_table)
     # assume len(cols) == 11
-    team['minions_killed'] += player['minions_killed']
-    team['assists'] += player['assists']
-    team['deaths'] += player['deaths']
-    team['kills'] += player['kills']
-    team['game_number'] = 1
+    team.team_stats[0].minions_killed = player['minions_killed']
+    team.team_stats[0].assists += player['assists']
+    team.team_stats[0].deaths += player['deaths']
+    team.team_stats[0].kills += player['kills']
+    team.team_stats[0].game_number = 1
+    print(team.team_stats[0])
     return team
 
 
@@ -100,8 +89,7 @@ def parse_player_stats_with_color(color, game_table):
 
 # color, game_table to
 # {'color': 'blue', 'assists': 37, 'deaths': 5, 'kills': 16,'minions_killed': 783}
-def parse_team_game(game_table):
-    team = {'color': color, 'assists': 0, 'deaths': 0, 'kills': 0, 'minions_killed': 0}
+def parse_team_game(team, game_table):
     player_stats_tables = game_table.find_all("table", {"class": "prettytable"})
     for player_stat_table in player_stats_tables:
         parse_player_stats_add_to_team(team, player_stat_table)
@@ -117,30 +105,34 @@ def parse_game(recap_tables, game):
     # game_tables[1] is blue team
     # game_tables[2] is red team
     game_tables = recap_tables.find_all("table", {"class": "prettytable matchrecap2"})
-    if game.teams[0].team_stats.color == 'blue':
-        parse_team_game('blue', game_tables[1])
-    else:
-        parse_team_game('red', game_tables[2])
-    return
+    for team in game.teams:
+        if team.team_stats[0].color == 'blue':
+            parse_team_game(team, game_tables[1])
+        elif team.team_stats[0].color == 'red':
+            parse_team_game(team, game_tables[2])
+        else:
+            print('problem parsing team does is neither blue not red it is: {}'.format(team.team_stats[0].color))
+    return game
 
 def parse_player(recap_tables):
     game_tables = recap_tables.find_all("table", {"class": "prettytable matchrecap2"})
     return parse_team_game('blue', game_tables[1]), parse_team_game('red', game_tables[2])
 
-def parse_game_info(recap_table, game):
+def parse_game_info(recap_table):
     # should only be 1 info_table
+    game = Game()
     game_info_table = recap_table.find("table", {"class": "wikitable matchrecap2"})
     blue_team = parse_team_game_info('blue', game_info_table, game)
     red_team = parse_team_game_info('red', game_info_table, game)
     game.teams.append(blue_team)
     game.teams.append(red_team)
-    print(game)
     return game
 
 
 def parse_team_game_info(color, game_info_table, game):
     # team = {'color': color, 'total_gold': 0, 'team_name': '', 'game_length_minutes': 0, 'won': None}
-    team_stats = TeamStats()
+    team_stats = TeamStats(minions_killed=0, assists=0, deaths=0, kills=0)
+    session.add(team_stats)
     team_stats.color = color
     rows = game_info_table.find_all('tr')
     # row where team name is kept and how we determine the win vs the loss
@@ -170,7 +162,6 @@ def parse_team_game_info(color, game_info_table, game):
         except KeyError:
             team_stats.won = False
     team.team_stats.append(team_stats)
-    print(team)
     return team
 
 
@@ -204,7 +195,6 @@ def get_players_from_worlds_webpage(game_id_initial, base_page, pages):
 
 
 def get_games_from_webpage(base_page=None, pages=None):
-    all_merge_games = []
     for page in pages:
         web_page = '{}{}'.format(base_page, page)
         data_source = session.query(DataSource).filter(DataSource.external_location == web_page).first()
@@ -214,8 +204,9 @@ def get_games_from_webpage(base_page=None, pages=None):
             response = requests.get(web_page)
             text = response.text
             soup = BeautifulSoup(text)
-            merge_games = merge_game_and_game_info(soup, retrieved_data_source)
-            all_merge_games += merge_games
+            retrieved_data_source = process_data_source(soup, retrieved_data_source)
+            print(retrieved_data_source)
+            session.commit()
         else:
             print('Webpage {} is already processed'.format(web_page))
         # for merge_game in merge_games:
@@ -223,7 +214,7 @@ def get_games_from_webpage(base_page=None, pages=None):
         #         merge_game[0]['team_name'] = team_mappings[merge_game[0]['team_name']]
         #     if team_mappings.get(merge_game[1]['team_name']) is not None:
         #         merge_game[1]['team_name'] = team_mappings[merge_game[1]['team_name']]
-    session.commit()
+
     #all_merge_games_with_game_id = assign_game_id_and_team_id(all_merge_games, game_ids, team_id_mapping)
     #print(all_merge_games_with_game_id)
     #return all_merge_games_with_game_id

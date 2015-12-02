@@ -54,7 +54,7 @@ class DataSource(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String)
     external_location = Column(String)
-    games = relationship('Game', backref="datasource")
+    games = relationship('Game', backref="data_source")
 
     def __str__(self):
         return 'id: {}, name: {}, external_location: {}, games: {}'.format\
@@ -83,9 +83,13 @@ class TeamStats(Base):
     barons = Column(Integer)
     dragons = Column(Integer)
     team_id = Column(Integer, ForeignKey('team.id'))
+    game_number = Column(Integer)
 
     def __str__(self):
-        return 'won: {}, color: {}'.format(self.won, self.color)
+        return 'id: {}, total_gold: {}, won: {}, color: {}, deaths: {}, minions_killed: {}, assists: {}, kills: {},' \
+               'gold: {}, barons: {}, dragons: {}, team_id: {}, game_number: {}'.format\
+            (self.id, self.total_gold, self.won, self.color, self.deaths, self.minions_killed, self.assists, self.kills,
+             self.gold, self.barons, self.dragons, self.team_id, self.game_number)
 
 
 class PlayerStats(Base):

@@ -84,9 +84,9 @@ def insert_teams():
     session = Session()
     for name, id in team_id_mappings.items():
         if name in team_external_mappings:
-            team = lole.Team(id=id, name=name, external_name=team_external_mappings[name])
+            team = lole.Team(id=id, name=name, external_name=team_external_mappings[name], external_id=id)
         else:
-            team = lole.Team(id=id, name=name, external_name=name)
+            team = lole.Team(id=id, name=name, external_name=name, external_id=id)
         session.add(team)
     session.commit()
 
