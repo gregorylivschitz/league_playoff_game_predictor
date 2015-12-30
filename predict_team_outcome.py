@@ -1,6 +1,8 @@
+from operator import itemgetter
 import pandas
 import numpy
 from sklearn import linear_model, cross_validation, preprocessing
+import sys
 from entities.league_of_legends_entities import Game, Team
 
 __author__ = 'Greg'
@@ -12,7 +14,8 @@ __author__ = 'Greg'
 
 class PredictTeamWin():
 
-    def __init__(self, session, engine, red_team_name, blue_team_name):
+    def __init__(self, session, engine, blue_team_name, red_team_name,
+                 predictor_stats=('csum_prev_min_K_A', 'csum_prev_min_minions_killed', 'csum_prev_min_total_gold')):
         self.team_stats_df = None
         self.logreg = linear_model.LogisticRegression()
         self.red_team_name = red_team_name
@@ -21,11 +24,18 @@ class PredictTeamWin():
         self.session = session
         self.team_stats_table_name = 'team_stats_df'
         self.processed_team_stats_table_name = 'processed_team_stats_df'
-        self.predictor_stats = ['csum_prev_min_K_A', 'csum_prev_min_minions_killed', 'csum_prev_min_total_gold']
-        self.key_stats = ['kills', 'deaths', 'assists', 'minions_killed', 'total_gold',
-                         'K_A', 'A_over_K']
-        self.processed_team_stats_df = self._get_processed_team_stats_in_data_frame()
-        self.predictor_numpy_array = self._get_latest_team_stats_numpy_array()
+        self.predictor_stats = predictor_stats
+        self.key_stats = ('kills', 'deaths', 'assists', 'minions_killed', 'total_gold',
+                         'K_A', 'A_over_K')
+        self._process_team_stats_and_train()
+
+
+
+    def _process_team_stats_and_train(self):
+        self._get_processed_team_stats_in_data_frame()
+        self._get_latest_team_stats_numpy_array()
+        self._get_predictors_in_numpy_arrays()
+        self._train_model()
 
 
     def _get_game_ids_from_database(self):
@@ -37,9 +47,8 @@ class PredictTeamWin():
         return self.session.query(Game).filter(Game.id.in_(game_ids))
 
     def _get_team_id_by_team_name(self, team_name):
-        team = self.session.query(Team).filter(Team.name.in_(team_name))
-        team_id = team.id
-        return team_id
+        team = self.session.query(Team).filter(Team.name.__eq__(team_name))
+        return team[0].id
 
     def _get_processed_team_stats_in_data_frame(self):
         game_ids = self._get_game_ids_from_database()
@@ -75,8 +84,7 @@ class PredictTeamWin():
             print('table does not exist inserting full table')
             self._insert_into_team_stats_df_tables(team_stats_df)
             print('table inserted')
-        processed_team_stats_df = pandas.read_sql_table(self.processed_team_stats_table_name, self.conn)
-        return processed_team_stats_df
+        self.processed_team_stats_df = pandas.read_sql_table(self.processed_team_stats_table_name, self.conn)
 
     def _insert_into_team_stats_df_tables(self, team_stats_df):
         team_stats_df.to_sql(self.team_stats_table_name, self.conn, if_exists='append')
@@ -104,22 +112,24 @@ class PredictTeamWin():
     def _convert_game_to_game_df(game):
         if game.team_stats[0].color == 'blue':
             blue_team_stats = dict(game.team_stats[0].__dict__)
-            blue_team_stats['team_name'] = game.team_stats[0].team
+            blue_team_stats['team_name'] = game.team_stats[0].team.name
             red_team_stats = dict(game.team_stats[1].__dict__)
-            red_team_stats['team_name'] = game.team_stats[1].team
+            red_team_stats['team_name'] = game.team_stats[1].team.name
         else:
             blue_team_stats = dict(game.team_stats[1].__dict__)
-            blue_team_stats['team_name'] = game.team_stats[1].team
+            blue_team_stats['team_name'] = game.team_stats[1].team.name
             red_team_stats = dict(game.team_stats[0].__dict__)
-            red_team_stats['team_name'] = game.team_stats[0].team
+            red_team_stats['team_name'] = game.team_stats[0].team.name
         del blue_team_stats['_sa_instance_state']
         del red_team_stats['_sa_instance_state']
-        blue_team_stats['game_length'] = game.game_length_minutes
-        red_team_stats['game_length'] = game.game_length_minutes
+        blue_team_stats['game_length_minutes'] = float(game.game_length_minutes)
+        red_team_stats['game_length_minutes'] = float(game.game_length_minutes)
+        blue_team_stats['total_gold'] = float(blue_team_stats['total_gold'])
+        red_team_stats['total_gold'] = float(red_team_stats['total_gold'])
         return blue_team_stats, red_team_stats
 
-    @staticmethod
-    def _process_team_stats_df(team_stats_df):
+
+    def _process_team_stats_df(self, team_stats_df):
         team_stats_df = team_stats_df.sort(['game_id', 'team_id'])
         key_stats = ['game_number', 'game_length_minutes', 'kills', 'deaths', 'assists', 'minions_killed', 'total_gold',
                      'K_A', 'A_over_K']
@@ -129,6 +139,7 @@ class PredictTeamWin():
             team_stats_df['assists'] / team_stats_df['kills']
         team_grouped_by_game_id_df = team_stats_df.groupby(['game_id'], as_index=False).sum()
         team_stats_df = pandas.merge(team_stats_df, team_grouped_by_game_id_df, on=['game_id'])
+        team_stats_df.to_sql('calc_team_stats', self.conn, if_exists='append')
         for key_stat in key_stats:
             # Need to add x/y to the keystat because when I add the groupby and merge the keystats get x and y added
             # to them at the end since they are the same name
@@ -182,15 +193,19 @@ class PredictTeamWin():
     def _get_predictors(self):
         team_records = self.processed_team_stats_df.to_dict('records')
         game_stats_predictors = []
+        team_records.sort(key=itemgetter('game_id'))
         for team_index in range(0, len(team_records), 2):
-            if team_records[team_index]['color'] == 'blue' and team_records[team_index + 1]['color'] == 'red':
+            team_1 = team_records[team_index]
+            team_2 = team_records[team_index + 1]
+            if team_1['color'] == 'blue' and team_2['color'] == 'red':
                 blue_team = team_records[team_index]
                 red_team = team_records[team_index + 1]
-            elif team_records[team_index]['color'] == 'red' and team_records[team_index + 1]['color'] == 'blue':
+            elif team_1['color'] == 'red' and team_2['color'] == 'blue':
                 red_team = team_records[team_index]
                 blue_team = team_records[team_index + 1]
             else:
-                raise Exception("Need both a blue and a red team in the game")
+                raise Exception("Need both a blue and a red team in the game have blue "
+                                "team: {} and red team: {}".format(team_1['color'], team_2['color']))
             if blue_team['game_id'] != red_team['game_id']:
                 raise Exception('Huge problem game_id''s for teams did not match winning_team game_id: {} '
                                 'losing_team game_id: {}'.format(blue_team, red_team))
@@ -209,14 +224,9 @@ class PredictTeamWin():
             game_stats_predictors.append(game_stat_predictor_dict)
         return game_stats_predictors
 
-    def train_model(self):
-        logreg = linear_model.LogisticRegression()
+    def _train_model(self):
         y_1darray = numpy.squeeze(self.y_array)
-        logreg.fit(self.predictors, y_1darray)
-        print('the predictors are {}'.format(self.predictors))
-        print('the y_array is {}'.format(self.y_array))
-        print('the coefficients are {}'.format(logreg.coef_))
-        return logreg
+        self.logreg.fit(self.predictors, y_1darray)
 
     def test_model(self):
         scores = cross_validation.cross_val_score(self.logreg, self.predictors, self.y_array, cv=5)
@@ -237,12 +247,13 @@ class PredictTeamWin():
         for predictor_stat in self.predictor_stats:
             dict_team_difference = dict_team_red[predictor_stat] - dict_team_blue[predictor_stat]
             game_predictor_stats.append(dict_team_difference)
-        predictor_numpy_array = numpy.array([game_predictor_stats])
-        return predictor_numpy_array
+        self.predictor_numpy_array = numpy.array([game_predictor_stats])
 
-    def predict_on_model(self):
+    def predict_on_single_game(self):
         print('logistical regression outcome for {} is: {}'.format(self.red_team_name, self.logreg.predict(self.predictor_numpy_array)))
-        print('logistical regression probability is: {}'.format(self.logreg.predict_proba(self.predictor_numpy_array)))
+        probability_in_numpy_array = self.logreg.predict_proba(self.predictor_numpy_array)
+        return {self.blue_team_name: probability_in_numpy_array[0][0], self.red_team_name: probability_in_numpy_array[0][1]}
+
         # numpy_array = self.logreg.predict_proba(real_array)
         # proba_list = numpy_array.tolist()[0]
         # turn_game_proba_into_series(5, 3, proba_list[1], team_name)
