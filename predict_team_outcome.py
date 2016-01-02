@@ -3,6 +3,7 @@ import pandas
 import numpy
 from sklearn import linear_model, cross_validation, preprocessing
 import sys
+from sqlalchemy.orm import sessionmaker
 from entities.league_of_legends_entities import Game, Team
 
 __author__ = 'Greg'
@@ -14,14 +15,15 @@ __author__ = 'Greg'
 
 class PredictTeamWin():
 
-    def __init__(self, session, engine, blue_team_name, red_team_name,
+    def __init__(self, engine, blue_team_name, red_team_name,
                  predictor_stats=('csum_prev_min_K_A', 'csum_prev_min_minions_killed', 'csum_prev_min_total_gold')):
         self.team_stats_df = None
         self.logreg = linear_model.LogisticRegression()
         self.red_team_name = red_team_name
         self.blue_team_name = blue_team_name
-        self.conn = engine
-        self.session = session
+        self.engine = engine
+        Session = sessionmaker(bind=engine)
+        self.session = Session()
         self.team_stats_table_name = 'team_stats_df'
         self.processed_team_stats_table_name = 'processed_team_stats_df'
         self.predictor_stats = predictor_stats
@@ -29,14 +31,11 @@ class PredictTeamWin():
                          'K_A', 'A_over_K')
         self._process_team_stats_and_train()
 
-
-
     def _process_team_stats_and_train(self):
-        self._get_processed_team_stats_in_data_frame()
+        self._get_processed_team_stats_in_df()
         self._get_latest_team_stats_numpy_array()
         self._get_predictors_in_numpy_arrays()
         self._train_model()
-
 
     def _get_game_ids_from_database(self):
         game_ids_row = self.session.query(Game.id)
@@ -50,12 +49,12 @@ class PredictTeamWin():
         team = self.session.query(Team).filter(Team.name.__eq__(team_name))
         return team[0].id
 
-    def _get_processed_team_stats_in_data_frame(self):
+    def _get_processed_team_stats_in_df(self):
         game_ids = self._get_game_ids_from_database()
         last_game_number = game_ids[-1]
-        has_processed_team_stats_table = self.conn.has_table(self.processed_team_stats_table_name)
+        has_processed_team_stats_table = self.engine.has_table(self.processed_team_stats_table_name)
         if has_processed_team_stats_table:
-            df_game_stats = pandas.read_sql_table(self.processed_team_stats_table_name, self.conn)
+            df_game_stats = pandas.read_sql_table(self.processed_team_stats_table_name, self.engine)
             df_game_stats_all = df_game_stats[df_game_stats.game_id.isin(game_ids)]
             # Using game_numbers here since we need the last few games to check.
             max_game_id_cached = df_game_stats_all['game_id'].max()
@@ -84,17 +83,17 @@ class PredictTeamWin():
             print('table does not exist inserting full table')
             self._insert_into_team_stats_df_tables(team_stats_df)
             print('table inserted')
-        self.processed_team_stats_df = pandas.read_sql_table(self.processed_team_stats_table_name, self.conn)
+        self.processed_team_stats_df = pandas.read_sql_table(self.processed_team_stats_table_name, self.engine)
 
     def _insert_into_team_stats_df_tables(self, team_stats_df):
-        team_stats_df.to_sql(self.team_stats_table_name, self.conn, if_exists='append')
+        team_stats_df.to_sql(self.team_stats_table_name, self.engine, if_exists='append')
         processed_team_stats_df = self._process_team_stats_df(team_stats_df)
-        processed_team_stats_df.to_sql(self.processed_team_stats_table_name, self.conn, if_exists='append')
+        processed_team_stats_df.to_sql(self.processed_team_stats_table_name, self.engine, if_exists='append')
 
     def _get_team_stats_in_df(self, games):
         counter = 0
         for game in games:
-            blue_team, red_team = self._convert_game_to_game_df(game)
+            blue_team, red_team = self._convert_game_to_team_stats_dfgjvb(game)
             blue_team_df = pandas.DataFrame(blue_team, index=[counter])
             red_team_df = pandas.DataFrame(red_team, index=[counter + 1])
             if self.team_stats_df is None:
@@ -109,7 +108,7 @@ class PredictTeamWin():
     # 'team_id': 1273, 'game_id': 6092, 'deaths': 5, 'game_length_minutes': 27.816666666666666, 'kills': 16,
     # 'minions_killed': 783}
     @staticmethod
-    def _convert_game_to_game_df(game):
+    def _convert_game_to_team_stats_df(game):
         if game.team_stats[0].color == 'blue':
             blue_team_stats = dict(game.team_stats[0].__dict__)
             blue_team_stats['team_name'] = game.team_stats[0].team.name
@@ -128,7 +127,6 @@ class PredictTeamWin():
         red_team_stats['total_gold'] = float(red_team_stats['total_gold'])
         return blue_team_stats, red_team_stats
 
-
     def _process_team_stats_df(self, team_stats_df):
         team_stats_df = team_stats_df.sort(['game_id', 'team_id'])
         key_stats = ['game_number', 'game_length_minutes', 'kills', 'deaths', 'assists', 'minions_killed', 'total_gold',
@@ -139,7 +137,7 @@ class PredictTeamWin():
             team_stats_df['assists'] / team_stats_df['kills']
         team_grouped_by_game_id_df = team_stats_df.groupby(['game_id'], as_index=False).sum()
         team_stats_df = pandas.merge(team_stats_df, team_grouped_by_game_id_df, on=['game_id'])
-        team_stats_df.to_sql('calc_team_stats', self.conn, if_exists='append')
+        team_stats_df.to_sql('calc_team_stats', self.engine, if_exists='append')
         for key_stat in key_stats:
             # Need to add x/y to the keystat because when I add the groupby and merge the keystats get x and y added
             # to them at the end since they are the same name
