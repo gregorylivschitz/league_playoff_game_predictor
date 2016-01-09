@@ -93,7 +93,7 @@ class PredictTeamWin():
     def _get_team_stats_in_df(self, games):
         counter = 0
         for game in games:
-            blue_team, red_team = self._convert_game_to_team_stats_dfgjvb(game)
+            blue_team, red_team = self._convert_game_to_team_stats_df(game)
             blue_team_df = pandas.DataFrame(blue_team, index=[counter])
             red_team_df = pandas.DataFrame(red_team, index=[counter + 1])
             if self.team_stats_df is None:
@@ -137,7 +137,6 @@ class PredictTeamWin():
             team_stats_df['assists'] / team_stats_df['kills']
         team_grouped_by_game_id_df = team_stats_df.groupby(['game_id'], as_index=False).sum()
         team_stats_df = pandas.merge(team_stats_df, team_grouped_by_game_id_df, on=['game_id'])
-        team_stats_df.to_sql('calc_team_stats', self.engine, if_exists='append')
         for key_stat in key_stats:
             # Need to add x/y to the keystat because when I add the groupby and merge the keystats get x and y added
             # to them at the end since they are the same name

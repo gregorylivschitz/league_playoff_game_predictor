@@ -12,6 +12,8 @@ class PredictPlayerStats:
         self.player_name = player_name
         Session = sessionmaker(bind=engine)
         self.session = Session()
+        self.player_stats_table_name = 'player_stats_df'
+        self._get_processed_player_stats_in_df()
 
     def _get_game_ids_from_database(self):
         game_ids_row = self.session.query(Game.id)
@@ -28,9 +30,9 @@ class PredictPlayerStats:
     def _get_processed_player_stats_in_df(self):
         game_ids = self._get_game_ids_from_database()
         last_game_number = game_ids[-1]
-        has_processed_team_stats_table = self.engine.has_table(self.processed_team_stats_table_name)
+        has_processed_team_stats_table = self.engine.has_table(self.player_stats_table_name)
         if has_processed_team_stats_table:
-            df_game_stats = pandas.read_sql_table(self.processed_team_stats_table_name, self.engine)
+            df_game_stats = pandas.read_sql_table(self.player_stats_table_name, self.engine)
             df_game_stats_all = df_game_stats[df_game_stats.game_id.isin(game_ids)]
             # Using game_numbers here since we need the last few games to check.
             max_game_id_cached = df_game_stats_all['game_id'].max()
@@ -46,8 +48,8 @@ class PredictPlayerStats:
                 # want to count max_id we already have it
                 game_ids_to_find = game_ids[max_game_id_index:]
                 games = self._get_game_by_ids(game_ids_to_find)
-                team_stats_df = self._get_team_stats_in_df(games)
-                self._insert_into_team_stats_df_tables(team_stats_df)
+                team_stats_df = self._get_player_stats_in_df(games)
+                self._insert_into_player_stats_df_tables(team_stats_df)
             else:
                 # If everything was cached return cached as true and just return the last numbers
                 # I could do this part better.
@@ -55,8 +57,39 @@ class PredictPlayerStats:
         else:
             # Table did not exist, have to get all
             games = self._get_game_by_ids(game_ids)
-            team_stats_df = self._get_team_stats_in_df(games)
+            team_stats_df = self._get_player_stats_in_df(games)
             print('table does not exist inserting full table')
-            self._insert_into_team_stats_df_tables(team_stats_df)
+            self._insert_into_player_stats_df_tables(team_stats_df)
             print('table inserted')
-        self.processed_team_stats_df = pandas.read_sql_table(self.processed_team_stats_table_name, self.engine)
+        self.processed_team_stats_df = pandas.read_sql_table(self.player_stats_table_name, self.engine)
+
+    def _process_player_stats_df(self, player_stats_df):
+        player_stats_df = player_stats_df.sort(['game_id', 'player_id'])
+        key_stats = ['game_number', 'game_length_minutes', 'kills', 'deaths', 'assists', 'minions_killed', 'total_gold']
+
+    def _get_player_stats_in_df(self, games):
+        player_stats_df = None
+        for game in games:
+            players_stats = self._convert_game_to_player_stats_df(game)
+            if player_stats_df is None:
+                player_stats_df = pandas.DataFrame(players_stats)
+            else:
+                single_game_player_stats_df = pandas.DataFrame(players_stats)
+                player_stats_df = player_stats_df.append(single_game_player_stats_df)
+        return player_stats_df
+
+    @staticmethod
+    def _convert_game_to_player_stats_df(game):
+        players_stats = game.player_stats
+        player_stats_list = []
+        for player_stats in players_stats:
+            player_stats_dic = player_stats.__dict__
+            del player_stats_dic['_sa_instance_state']
+            player_stats_dic['game_length_minutes'] = float(game.game_length_minutes)
+            player_stats_dic['player_name'] = player_stats.player.name
+            player_stats_list.append(player_stats_dic)
+        return player_stats_list
+
+    def _insert_into_player_stats_df_tables(self, player_stats_df):
+        player_stats_df.to_sql(self.player_stats_table_name, self.engine, if_exists='append')
+
