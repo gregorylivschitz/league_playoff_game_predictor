@@ -13,7 +13,7 @@ __author__ = 'Greg'
 # 'minions_killed': 783}
 
 
-class PredictTeamWin():
+class PredictTeamWin:
 
     def __init__(self, engine, blue_team_name, red_team_name,
                  predictor_stats=('csum_prev_min_K_A', 'csum_prev_min_minions_killed', 'csum_prev_min_total_gold')):
@@ -129,29 +129,31 @@ class PredictTeamWin():
 
     def _process_team_stats_df(self, team_stats_df):
         team_stats_df = team_stats_df.sort(['game_id', 'team_id'])
-        key_stats = ['game_number', 'game_length_minutes', 'kills', 'deaths', 'assists', 'minions_killed', 'total_gold',
-                     'K_A', 'A_over_K']
+        key_stats = ['game_number', 'game_length_minutes'] + (list(self.key_stats))
         team_stats_df['K_A'] = \
             team_stats_df['kills'] + team_stats_df['assists']
         team_stats_df['A_over_K'] = \
             team_stats_df['assists'] / team_stats_df['kills']
         team_grouped_by_game_id_df = team_stats_df.groupby(['game_id'], as_index=False).sum()
+        # Need to rename columns with total
+        team_grouped_by_game_id_df_columns = list(team_grouped_by_game_id_df)
+        team_grouped_by_game_id_df.rename(columns=lambda column_name: column_name if column_name == 'game_id' else
+        '{}_for_game'.format(column_name), inplace=True)
         team_stats_df = pandas.merge(team_stats_df, team_grouped_by_game_id_df, on=['game_id'])
         for key_stat in key_stats:
             # Need to add x/y to the keystat because when I add the groupby and merge the keystats get x and y added
             # to them at the end since they are the same name
-            key_stat_x = '{}_x'.format(key_stat)
-            key_stat_y = '{}_y'.format(key_stat)
-            team_stats_df['csum_{}'.format(key_stat)] = team_stats_df.groupby(by='team_id_x')[key_stat_x].cumsum()
-            team_stats_df['csum_total_{}'.format(key_stat)] = team_stats_df.groupby(by='team_id_x')[key_stat_y].cumsum()
+            key_stat_for_game = '{}_for_game'.format(key_stat)
+            team_stats_df['csum_{}'.format(key_stat)] = team_stats_df.groupby(by='team_id')[key_stat].cumsum()
+            team_stats_df['csum_total_{}'.format(key_stat)] = team_stats_df.groupby(by='team_id')[key_stat_for_game].cumsum()
             team_stats_df['csum_prev_{}'.format(key_stat)] = team_stats_df['csum_{}'.format(key_stat)] - team_stats_df[
-                key_stat_x]
+                key_stat]
             team_stats_df['csum_total_prev_{}'.format(key_stat)] = \
-                team_stats_df['csum_total_{}'.format(key_stat)] - team_stats_df[key_stat_y]
+                team_stats_df['csum_total_{}'.format(key_stat)] - team_stats_df[key_stat_for_game]
             team_stats_df['csum_prev_avg_{}'.format(key_stat)] = \
                 team_stats_df['csum_prev_{}'.format(key_stat)] / team_stats_df['csum_prev_game_number']
-            team_stats_df['per_min_{}'.format(key_stat)] = team_stats_df[key_stat_x] / team_stats_df[
-                'game_length_minutes_x']
+            team_stats_df['per_min_{}'.format(key_stat)] = team_stats_df[key_stat] / team_stats_df[
+                'game_length_minutes']
             team_stats_df['csum_prev_percent_{}'.format(key_stat)] = \
                 team_stats_df['csum_prev_{}'.format(key_stat)] / team_stats_df['csum_total_prev_{}'.format(key_stat)]
             team_stats_df['margin_{}'.format(key_stat)] = \
@@ -214,9 +216,9 @@ class PredictTeamWin():
                     format(key_stat)] - blue_team['eff_{}'.format(key_stat)]
             game_stat_predictor_dict['csum_prev_kda'] = red_team['csum_prev_kda'] - blue_team['csum_prev_kda']
             game_stat_predictor_dict['game_id'] = red_team['game_id']
-            if red_team['won_x']:
+            if red_team['won']:
                 game_stat_predictor_dict['y_element'] = 1
-            elif blue_team['won_x']:
+            elif blue_team['won']:
                 game_stat_predictor_dict['y_element'] = 0
             game_stats_predictors.append(game_stat_predictor_dict)
         return game_stats_predictors
@@ -235,12 +237,14 @@ class PredictTeamWin():
         game_predictor_stats = []
         # team_stats_df.to_csv('test_team_stats')
         # team_stats_df = team_stats_df[team_stats_df.team_id.isin([2, 1])]
-        team_stats_df_red = self.processed_team_stats_df[self.processed_team_stats_df['team_id_x'] == red_team_id]
-        team_stats_df_blue = self.processed_team_stats_df[self.processed_team_stats_df['team_id_x'] == blue_team_id]
+        team_stats_df_red = self.processed_team_stats_df[self.processed_team_stats_df['team_id'] == red_team_id]
+        team_stats_df_blue = self.processed_team_stats_df[self.processed_team_stats_df['team_id'] == blue_team_id]
         team_stats_df_red = team_stats_df_red.sort(['game_id'], ascending=False).head(1)
         team_stats_df_blue = team_stats_df_blue.sort(['game_id'], ascending=False).head(1)
+        print(team_stats_df_red)
         dict_team_red = team_stats_df_red.to_dict('records')[0]
         dict_team_blue = team_stats_df_blue.to_dict('records')[0]
+        print(dict_team_red)
         for predictor_stat in self.predictor_stats:
             dict_team_difference = dict_team_red[predictor_stat] - dict_team_blue[predictor_stat]
             game_predictor_stats.append(dict_team_difference)

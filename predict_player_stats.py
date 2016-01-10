@@ -7,13 +7,21 @@ __author__ = 'Greg'
 
 class PredictPlayerStats:
 
-    def __init__(self, engine, player_name):
+    def __init__(self, engine, player_name,
+                 predictor_stats=('csum_prev_min_kills', 'csum_prev_min_minions_killed', 'csum_prev_min_total_gold')):
         self.engine = engine
         self.player_name = player_name
         Session = sessionmaker(bind=engine)
         self.session = Session()
         self.player_stats_table_name = 'player_stats_df'
+        self.processed_player_stars_table_name = 'processed_player_stats_df'
+        self._process_player_stats_and_train()
+
+    def _process_player_stats_and_train(self):
         self._get_processed_player_stats_in_df()
+        self._get_latest_team_stats_numpy_array()
+        self._get_predictors_in_numpy_arrays()
+        self._train_model()
 
     def _get_game_ids_from_database(self):
         game_ids_row = self.session.query(Game.id)
@@ -30,7 +38,7 @@ class PredictPlayerStats:
     def _get_processed_player_stats_in_df(self):
         game_ids = self._get_game_ids_from_database()
         last_game_number = game_ids[-1]
-        has_processed_team_stats_table = self.engine.has_table(self.player_stats_table_name)
+        has_processed_team_stats_table = self.engine.has_table(self.processed_player_stars_table_name)
         if has_processed_team_stats_table:
             df_game_stats = pandas.read_sql_table(self.player_stats_table_name, self.engine)
             df_game_stats_all = df_game_stats[df_game_stats.game_id.isin(game_ids)]
@@ -66,6 +74,18 @@ class PredictPlayerStats:
     def _process_player_stats_df(self, player_stats_df):
         player_stats_df = player_stats_df.sort(['game_id', 'player_id'])
         key_stats = ['game_number', 'game_length_minutes', 'kills', 'deaths', 'assists', 'minions_killed', 'total_gold']
+        for key_stat in key_stats:
+            player_stats_df['csum_{}'.format(key_stat)] = player_stats_df.groupby(by='player_id')[key_stat].cumsum()
+            player_stats_df['csum_prev_{}'.format(key_stat)] = \
+                player_stats_df['csum_{}'.format(key_stat)] - player_stats_df[key_stat]
+            player_stats_df['csum_prev_avg_{}'.format(key_stat)] = \
+                player_stats_df['csum_prev_{}'.format(key_stat)] / player_stats_df['csum_prev_game_number']
+            player_stats_df['per_min_{}'.format(key_stat)] = player_stats_df[key_stat] / player_stats_df[
+                'game_length_minutes']
+            player_stats_df['csum_prev_kda'] = player_stats_df['csum_prev_kills'] * player_stats_df['csum_prev_assists'] \
+                                 / player_stats_df['csum_prev_deaths']
+            player_stats_df = player_stats_df.sort(['game_id'])
+        return player_stats_df
 
     def _get_player_stats_in_df(self, games):
         player_stats_df = None
@@ -92,4 +112,6 @@ class PredictPlayerStats:
 
     def _insert_into_player_stats_df_tables(self, player_stats_df):
         player_stats_df.to_sql(self.player_stats_table_name, self.engine, if_exists='append')
+        processed_team_stats_df = self._process_player_stats_df(player_stats_df)
+        processed_team_stats_df.to_sql(self.processed_player_stars_table_name, self.engine, if_exists='append')
 
