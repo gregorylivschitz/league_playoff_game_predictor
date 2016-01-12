@@ -32,10 +32,10 @@ class PredictTeamWin:
         self._process_team_stats_and_train()
 
     def _process_team_stats_and_train(self):
-        self._get_processed_team_stats_in_df()
-        self._get_latest_team_stats_numpy_array()
-        self._get_predictors_in_numpy_arrays()
-        self._train_model()
+        processed_team_stats_df = self._get_processed_team_stats_in_df()
+        self.latest_predictor_numpy_array = self._get_latest_team_stats_numpy_array(processed_team_stats_df)
+        predictors, y_array = self._get_predictors_in_numpy_arrays(processed_team_stats_df)
+        self._train_model(predictors, y_array)
 
     def _get_game_ids_from_database(self):
         game_ids_row = self.session.query(Game.id)
@@ -83,7 +83,8 @@ class PredictTeamWin:
             print('table does not exist inserting full table')
             self._insert_into_team_stats_df_tables(team_stats_df)
             print('table inserted')
-        self.processed_team_stats_df = pandas.read_sql_table(self.processed_team_stats_table_name, self.engine)
+        processed_team_stats_df = pandas.read_sql_table(self.processed_team_stats_table_name, self.engine)
+        return processed_team_stats_df
 
     def _insert_into_team_stats_df_tables(self, team_stats_df):
         team_stats_df.to_sql(self.team_stats_table_name, self.engine, if_exists='append')
@@ -135,8 +136,6 @@ class PredictTeamWin:
         team_stats_df['A_over_K'] = \
             team_stats_df['assists'] / team_stats_df['kills']
         team_grouped_by_game_id_df = team_stats_df.groupby(['game_id'], as_index=False).sum()
-        # Need to rename columns with total
-        team_grouped_by_game_id_df_columns = list(team_grouped_by_game_id_df)
         team_grouped_by_game_id_df.rename(columns=lambda column_name: column_name if column_name == 'game_id' else
         '{}_for_game'.format(column_name), inplace=True)
         team_stats_df = pandas.merge(team_stats_df, team_grouped_by_game_id_df, on=['game_id'])
@@ -172,8 +171,8 @@ class PredictTeamWin:
         team_stats_df = team_stats_df.sort(['game_id'])
         return team_stats_df
 
-    def _get_predictors_in_numpy_arrays(self):
-        games = self._get_predictors()
+    def _get_predictors_in_numpy_arrays(self, processed_team_stats_df):
+        games = self._get_predictors(processed_team_stats_df)
         game_list = []
         y_array_list = []
         for game in games:
@@ -183,14 +182,14 @@ class PredictTeamWin:
                     game_predictor_stats.append(game[predictor_stat])
                 game_list.append(game_predictor_stats)
                 y_array_list.append(game['y_element'])
-        self.predictors = numpy.array(game_list)
-        self.y_array = numpy.array([y_array_list])
+        predictors = numpy.array(game_list)
+        y_array = numpy.array([y_array_list])
         # print("predictors are: {}".format(predictors))
         # print("y array is: {}".format(y_array))
-        return self.predictors, self.y_array
+        return predictors, y_array
 
-    def _get_predictors(self):
-        team_records = self.processed_team_stats_df.to_dict('records')
+    def _get_predictors(self, processed_team_stats_df):
+        team_records = processed_team_stats_df.to_dict('records')
         game_stats_predictors = []
         team_records.sort(key=itemgetter('game_id'))
         for team_index in range(0, len(team_records), 2):
@@ -223,36 +222,35 @@ class PredictTeamWin:
             game_stats_predictors.append(game_stat_predictor_dict)
         return game_stats_predictors
 
-    def _train_model(self):
-        y_1darray = numpy.squeeze(self.y_array)
-        self.logreg.fit(self.predictors, y_1darray)
+    def _train_model(self, predictors, y_array):
+        y_1darray = numpy.squeeze(y_array)
+        self.logreg.fit(predictors, y_1darray)
 
     def test_model(self):
         scores = cross_validation.cross_val_score(self.logreg, self.predictors, self.y_array, cv=5)
         print("Accuracy: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std() * 2))
 
-    def _get_latest_team_stats_numpy_array(self):
+    def _get_latest_team_stats_numpy_array(self, processed_team_stats_df):
         red_team_id = self._get_team_id_by_team_name(self.red_team_name)
         blue_team_id = self._get_team_id_by_team_name(self.blue_team_name)
         game_predictor_stats = []
         # team_stats_df.to_csv('test_team_stats')
         # team_stats_df = team_stats_df[team_stats_df.team_id.isin([2, 1])]
-        team_stats_df_red = self.processed_team_stats_df[self.processed_team_stats_df['team_id'] == red_team_id]
-        team_stats_df_blue = self.processed_team_stats_df[self.processed_team_stats_df['team_id'] == blue_team_id]
+        team_stats_df_red = processed_team_stats_df[processed_team_stats_df['team_id'] == red_team_id]
+        team_stats_df_blue = processed_team_stats_df[processed_team_stats_df['team_id'] == blue_team_id]
         team_stats_df_red = team_stats_df_red.sort(['game_id'], ascending=False).head(1)
         team_stats_df_blue = team_stats_df_blue.sort(['game_id'], ascending=False).head(1)
-        print(team_stats_df_red)
         dict_team_red = team_stats_df_red.to_dict('records')[0]
         dict_team_blue = team_stats_df_blue.to_dict('records')[0]
-        print(dict_team_red)
         for predictor_stat in self.predictor_stats:
             dict_team_difference = dict_team_red[predictor_stat] - dict_team_blue[predictor_stat]
             game_predictor_stats.append(dict_team_difference)
-        self.predictor_numpy_array = numpy.array([game_predictor_stats])
+        predictor_numpy_array = numpy.array([game_predictor_stats])
+        return predictor_numpy_array
 
     def predict_on_single_game(self):
-        print('logistical regression outcome for {} is: {}'.format(self.red_team_name, self.logreg.predict(self.predictor_numpy_array)))
-        probability_in_numpy_array = self.logreg.predict_proba(self.predictor_numpy_array)
+        print('logistical regression outcome for {} is: {}'.format(self.red_team_name, self.logreg.predict(self.latest_predictor_numpy_array)))
+        probability_in_numpy_array = self.logreg.predict_proba(self.latest_predictor_numpy_array)
         return {self.blue_team_name: probability_in_numpy_array[0][0], self.red_team_name: probability_in_numpy_array[0][1]}
 
         # numpy_array = self.logreg.predict_proba(real_array)
