@@ -1,10 +1,15 @@
 from decimal import Decimal
+import decimal
+import re
+import traceback
 from sqlalchemy import create_engine
+from sqlalchemy import exc
 from sqlalchemy.orm import sessionmaker
 from bs4 import BeautifulSoup, NavigableString
 import requests
-from entities.league_of_legends_entities import DataSource, Game, Team, TeamStats, Player, PlayerStats
+from entities.league_of_legends_entities import DataSource, Game, Team, TeamStats, Player, PlayerStats, Tournament
 from utilities.sqlalchemy import get_or_create
+from urllib.parse import urlparse
 
 __author__ = 'Greg'
 
@@ -22,23 +27,25 @@ __author__ = 'Greg'
 # [{'game_id': 500, 'player_name': 'xPeke', 'kills': 2, 'deaths': 3, 'assists': 5, 'gold': 20000, 'minions_killed': 370, 'color': blue},
 # {'game_id': 500, 'player_name': 'xPeke', 'kills': 2, 'deaths': 3, 'assists': 5, 'gold': 20000, 'minions_killed': 370, 'color': blue}]
 
-engine = create_engine('postgresql://postgres:postgres@localhost:5432/yolobid')
+engine = create_engine('postgresql://postgres:postgres@localhost:5432/test_entities')
 Session = sessionmaker(bind=engine, autoflush=False)
 session = Session()
 
-def process_data_source(soup, data_source):
-    data_source = parse_recap_tables_for_games(soup, data_source)
+
+def process_data_source(soup, data_source, tournament):
+    data_source = parse_recap_tables_for_games(soup, data_source, tournament)
     return data_source
 
 
 # parse recap tables into a list of team tuples
-def parse_recap_tables_for_games(soup, data_source):
+def parse_recap_tables_for_games(soup, data_source, tournament):
     for recap_table in soup.find_all("table", {"class": "wikitable matchrecap1"}):
         blue_team, red_team, game = parse_game_info(recap_table)
         session.add(game)
-        data_source.games.append(parse_game(blue_team, red_team, game, recap_table))
+        parsed_game = parse_game(blue_team, red_team, game, recap_table)
+        data_source.games.append(parsed_game)
+        tournament.games.append(parsed_game)
     return data_source
-    # return games, games_info
 
 
 # given a column, get contents and strip garbage
@@ -58,6 +65,39 @@ def parse_column_player_name(col):
 
 def parse_champion_name(col):
     return str(col.contents[0]['title'].strip())
+
+
+def get_tournament_from_web_page(web_page):
+    regions = ['LCK', 'LPL', 'LMS']
+    url_parsed = urlparse(web_page)
+    path = url_parsed.path
+    # regex out the name of the tournament from the path
+    p = re.compile('\/wiki\/(.+)\/Scoreboards')
+    tournament_path = p.search(path).group(1)
+    if 'League_Championship' in tournament_path:
+        name, region, year, season = tournament_path.split('/')
+        year = remove_season(year)
+        season = remove_season(season)
+        tournament = Tournament(name=name, region=region, year=int(year), season=season)
+    elif any(region in tournament_path for region in regions):
+        region, year, season = tournament_path.split('/')
+        name = region
+        year = remove_season(year)
+        season = remove_season(season)
+        tournament =Tournament(name=name, region=region, year=int(year), season=season)
+    elif 'World_Championship' in tournament_path:
+        tournament_split = tournament_path.split('_')
+        year = tournament_split[0]
+        name = '{}_{}'.format(tournament_split[2], tournament_split[3])
+        region = 'ALL'
+        season = tournament_split[2]
+        tournament = Tournament(name=name, region=region, year=int(year), season=season)
+    return tournament
+
+
+def remove_season(path_string):
+    path_string = path_string.replace('_Season', '')
+    return path_string
 
 
 # parse values from table and add to team
@@ -81,11 +121,21 @@ def parse_player_stats(game, team, player_stat_table):
     name = parse_column_player_name(cols[1])
     player = get_or_create(session, Player, name=name)
     champion_played = parse_champion_name(cols[0])
-    gold = parse_gold_stat(cols[9])
-    minions_killed = parse_column_stats(cols[10])
-    assists = parse_column_stats(cols[6])
-    deaths = parse_column_stats(cols[5])
-    kills = parse_column_stats(cols[4])
+    # Page was updated to include tokens, so the location of the stats were messed up, this handles both types of pages.
+    try:
+        gold = parse_gold_stat(cols[9])
+        minions_killed = parse_column_stats(cols[10])
+    except decimal.InvalidOperation:
+        gold = parse_gold_stat(cols[10])
+        minions_killed = parse_column_stats(cols[11])
+    try:
+        assists = parse_column_stats(cols[6])
+        deaths = parse_column_stats(cols[5])
+        kills = parse_column_stats(cols[4])
+    except ValueError:
+        assists = parse_column_stats(cols[7])
+        deaths = parse_column_stats(cols[6])
+        kills = parse_column_stats(cols[5])
     player_stat = PlayerStats(champion_played=champion_played, minions_killed=minions_killed, assists=assists,
                               deaths=deaths, kills=kills, gold=gold)
     # print('The col is {} and the stat is {}'.format(3, parse_column(cols[3])))
@@ -147,8 +197,9 @@ def parse_team_game_info(color, game_info_table, game):
     # cols[0] = blue team_name, cols[1] = blue win or loss, cols[3] = red team name, cols[2] = red won or losee
     if team_stats.color == 'red':
         team_name = cols[3].contents[0].strip()
-
+        team_name = team_name.upper()
         team = get_or_create(session, Team, external_name=team_name)
+        team.name = team_name
         team_stats.total_gold = float(cols_game_stats_info[10].contents[0].strip().replace('k', '')) * 1000
         team_stats.turrets = parse_column_stats(cols_game_stats_info[8])
         team_stats.dragons = parse_column_stats(cols_game_stats_info[7])
@@ -160,7 +211,9 @@ def parse_team_game_info(color, game_info_table, game):
             team_stats.won = False
     elif team_stats.color == 'blue':
         team_name = cols[0].contents[0].strip()
+        team_name = team_name.upper()
         team = get_or_create(session, Team, external_name=team_name)
+        team.name = team_name
         team_stats.total_gold = float(cols_game_stats_info[0].contents[2].strip().replace('k', '')) * 1000
         team_stats.turrets = int(str(cols_game_stats_info[2].contents[2].strip()))
         team_stats.dragons = int(str(cols_game_stats_info[3].contents[2].strip()))
@@ -178,16 +231,24 @@ def parse_team_game_info(color, game_info_table, game):
 def get_games_from_webpage(web_page=None):
     data_source = session.query(DataSource).filter(DataSource.external_location == web_page).first()
     if data_source is None:
-        retrieved_data_source = DataSource(name='WEB', external_location=web_page)
-        session.add(retrieved_data_source)
-        response = requests.get(web_page)
-        text = response.text
-        soup = BeautifulSoup(text)
-        retrieved_data_source = process_data_source(soup, retrieved_data_source)
-
+        try:
+            retrieved_data_source = DataSource(name='WEB', external_location=web_page)
+            retrieved_tournament = get_tournament_from_web_page(web_page)
+            retrieved_tournament.data_sources.append(retrieved_data_source)
+            session.add(retrieved_data_source)
+            response = requests.get(web_page)
+            text = response.text
+            soup = BeautifulSoup(text)
+            retrieved_data_source = process_data_source(soup, retrieved_data_source, retrieved_tournament)
+            session.commit()
+            print('Webpage {} is has been processed'.format(web_page))
+        except (exc.SQLAlchemyError, IndexError, ValueError) as e:
+            print('There was a problem loading the webpage {} rolling back now'.format(web_page))
+            print('The exception is {}'.format(e))
+            print('Stacktract {}'.format(traceback.format_exc()))
+            session.rollback()
     else:
         print('Webpage {} is already processed'.format(web_page))
-    session.commit()
 
 
 def get_games_from_webpages(base_page, pages):
@@ -199,10 +260,22 @@ def get_games_from_webpages(base_page, pages):
     return data_sources
 
 
+
+
+
 def main():
     get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/2015_Season_World_Championship/Scoreboards',
                            pages=['', '/Group_Stage/Group_B', '/Group_Stage/Group_C', '/Group_Stage/Group_D', '/Bracket_Stage'])
-
+    get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/League_Championship_Series/North_America/2016_Season/Spring_Season/Scoreboards',
+                           pages=[''])
+    get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/League_Championship_Series/Europe/2016_Season/Spring_Season/Scoreboards',
+                           pages=[''])
+    get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/LCK/2016_Season/Spring_Season/Scoreboards',
+                           pages=[''])
+    # get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/LPL/2016_Season/Spring_Season/Scoreboards',
+    #                        pages=[''])
+    get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/LMS/2016_Season/Spring_Season/Scoreboards',
+                           pages=[''])
 
 if __name__ == "__main__":
     main()

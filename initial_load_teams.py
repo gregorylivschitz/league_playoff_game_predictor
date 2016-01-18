@@ -76,7 +76,7 @@ team_id_mappings = {'LGD Gaming': 10007,
 team_external_mappings = {'H2K': 'H2k-Gaming', 'SKTelecom T1': 'SK Telecom T1'}
 
 
-engine = create_engine('postgresql://postgres:postgres@localhost:5432/yolobid', echo=True)
+engine = create_engine('postgresql://postgres:postgres@localhost:5432/test_entities', echo=True)
 Session = sessionmaker(bind=engine)
 
 
@@ -84,9 +84,9 @@ def insert_teams():
     session = Session()
     for name, id in team_id_mappings.items():
         if name in team_external_mappings:
-            team = lole.Team(id=id, name=name, external_name=team_external_mappings[name], external_id=id)
+            team = lole.Team(name=name.upper(), external_name=team_external_mappings[name].upper(), external_id=id)
         else:
-            team = lole.Team(id=id, name=name, external_name=name, external_id=id)
+            team = lole.Team(name=name.upper(), external_name=name.upper(), external_id=id)
         session.add(team)
     session.commit()
 

@@ -152,6 +152,7 @@ class PredictPlayerStats:
         for game in games:
             players_stats = self._convert_game_to_player_stats_df(game)
             if player_stats_df is None:
+                print(players_stats)
                 player_stats_df = pandas.DataFrame(players_stats, index=list(range(max_index_cached, (max_index_cached + 10))))
             else:
                 single_game_player_stats_df = pandas.DataFrame(players_stats, index=list(range(max_index_cached, (max_index_cached + 10))))
@@ -178,7 +179,6 @@ class PredictPlayerStats:
         processed_team_stats_df.to_sql(self.processed_player_stars_table_name, self.engine, if_exists='append')
 
     def predict_player_stat(self):
-
         reshaped_numpy_array = numpy.reshape(self.latest_predictor_numpy_array, 3,1)
         print(reshaped_numpy_array)
         print('poisson outcome for {} is: {}'.format(self.player_name, self.poisson.predict(reshaped_numpy_array)))

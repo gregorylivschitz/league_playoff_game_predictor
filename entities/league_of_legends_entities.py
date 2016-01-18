@@ -4,7 +4,7 @@ from sqlalchemy.orm import relationship, sessionmaker
 
 __author__ = 'Greg'
 
-engine = create_engine('postgresql://postgres:postgres@localhost:5432/yolobid', echo=True)
+engine = create_engine('postgresql://postgres:postgres@localhost:5432/test_entities', echo=True)
 Session = sessionmaker(bind=engine)
 Base = declarative_base()
 
@@ -13,8 +13,26 @@ team_player = Table('team_player', Base.metadata,
                     Column('player_id', Integer, ForeignKey('player.id'))
                     )
 
+
 class TimestampMixin(object):
     created_date = Column(DateTime, default=func.now())
+
+
+class Tournament(Base, TimestampMixin):
+    """Tournament object"""
+    __tablename__ = 'tournament'
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    region = Column(String)
+    year = Column(Integer)
+    season = Column(String)
+    games = relationship('Game', backref="tournament")
+    data_sources = relationship('DataSource', backref="tournament")
+
+    def __str__(self):
+        return 'id: {}, name: {}, external_location: {}, games: {}'.format\
+            (self.id, self.name, self.external_location, self.data_sources)
+
 
 class DataSource(Base, TimestampMixin):
     """DataSource object"""
@@ -23,6 +41,7 @@ class DataSource(Base, TimestampMixin):
     name = Column(String)
     external_location = Column(String)
     games = relationship('Game', backref="data_source")
+    tournament_id = Column(Integer, ForeignKey('tournament.id'))
 
     def __str__(self):
         return 'id: {}, name: {}, external_location: {}, games: {}'.format\
@@ -36,6 +55,7 @@ class Game(Base, TimestampMixin):
     game_length_minutes = Column(Numeric)
     external_id = Column(Integer)
     data_source_id = Column(Integer, ForeignKey('data_source.id'))
+    tournament_id = Column(Integer, ForeignKey('tournament.id'))
     team_stats = relationship('TeamStats', backref='game')
     player_stats = relationship('PlayerStats', backref='game')
 

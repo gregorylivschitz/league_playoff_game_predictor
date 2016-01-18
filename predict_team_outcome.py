@@ -16,7 +16,7 @@ __author__ = 'Greg'
 class PredictTeamWin:
 
     def __init__(self, engine, blue_team_name, red_team_name,
-                 predictor_stats=('csum_prev_min_K_A', 'csum_prev_min_minions_killed', 'csum_prev_min_total_gold')):
+                 predictor_stats=('csum_prev_min_k_a', 'csum_prev_min_minions_killed', 'csum_prev_min_total_gold')):
         self.team_stats_df = None
         self.logreg = linear_model.LogisticRegression()
         self.red_team_name = red_team_name
@@ -28,7 +28,7 @@ class PredictTeamWin:
         self.processed_team_stats_table_name = 'processed_team_stats_df'
         self.predictor_stats = predictor_stats
         self.key_stats = ('kills', 'deaths', 'assists', 'minions_killed', 'total_gold',
-                         'K_A', 'A_over_K')
+                         'k_a', 'a_over_k')
         self._process_team_stats_and_train()
 
     def _process_team_stats_and_train(self):
@@ -131,9 +131,9 @@ class PredictTeamWin:
     def _process_team_stats_df(self, team_stats_df):
         team_stats_df = team_stats_df.sort(['game_id', 'team_id'])
         key_stats = ['game_number', 'game_length_minutes'] + (list(self.key_stats))
-        team_stats_df['K_A'] = \
+        team_stats_df['k_a'] = \
             team_stats_df['kills'] + team_stats_df['assists']
-        team_stats_df['A_over_K'] = \
+        team_stats_df['a_over_k'] = \
             team_stats_df['assists'] / team_stats_df['kills']
         team_grouped_by_game_id_df = team_stats_df.groupby(['game_id'], as_index=False).sum()
         team_grouped_by_game_id_df.rename(columns=lambda column_name: column_name if column_name == 'game_id' else
