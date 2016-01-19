@@ -76,7 +76,7 @@ team_id_mappings = {'LGD Gaming': 10007,
 team_external_mappings = {'H2K': 'H2k-Gaming', 'SKTelecom T1': 'SK Telecom T1'}
 
 
-engine = create_engine('postgresql://postgres:postgres@localhost:5432/test_entities', echo=True)
+engine = create_engine('postgresql://postgres:postgres@localhost:5432/yolobid', echo=True)
 Session = sessionmaker(bind=engine)
 
 

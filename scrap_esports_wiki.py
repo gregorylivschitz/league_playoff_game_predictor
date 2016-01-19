@@ -27,7 +27,7 @@ __author__ = 'Greg'
 # [{'game_id': 500, 'player_name': 'xPeke', 'kills': 2, 'deaths': 3, 'assists': 5, 'gold': 20000, 'minions_killed': 370, 'color': blue},
 # {'game_id': 500, 'player_name': 'xPeke', 'kills': 2, 'deaths': 3, 'assists': 5, 'gold': 20000, 'minions_killed': 370, 'color': blue}]
 
-engine = create_engine('postgresql://postgres:postgres@localhost:5432/test_entities')
+engine = create_engine('postgresql://postgres:postgres@localhost:5432/yolobid')
 Session = sessionmaker(bind=engine, autoflush=False)
 session = Session()
 
@@ -241,7 +241,7 @@ def get_games_from_webpage(web_page=None):
             soup = BeautifulSoup(text)
             retrieved_data_source = process_data_source(soup, retrieved_data_source, retrieved_tournament)
             session.commit()
-            print('Webpage {} is has been processed'.format(web_page))
+            print('Webpage {} has been processed'.format(web_page))
         except (exc.SQLAlchemyError, IndexError, ValueError) as e:
             print('There was a problem loading the webpage {} rolling back now'.format(web_page))
             print('The exception is {}'.format(e))

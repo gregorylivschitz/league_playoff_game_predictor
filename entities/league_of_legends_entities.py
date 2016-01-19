@@ -4,7 +4,7 @@ from sqlalchemy.orm import relationship, sessionmaker
 
 __author__ = 'Greg'
 
-engine = create_engine('postgresql://postgres:postgres@localhost:5432/test_entities', echo=True)
+engine = create_engine('postgresql://postgres:postgres@localhost:5432/yolobid', echo=True)
 Session = sessionmaker(bind=engine)
 Base = declarative_base()
 
