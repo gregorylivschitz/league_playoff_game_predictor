@@ -71,7 +71,7 @@ class PredictPlayerStats:
         print('predictors {} size {}'.format(predictors, predictors.size))
         print('y_array {} size {}'.format(y_1darray, y_1darray.size))
         self.poisson = Poisson(y_1darray, predictors)
-        self.poisson.fit()
+        self.pos_result = self.poisson.fit()
 
     def _get_game_ids_from_database(self):
         game_ids_row = self.session.query(Game.id)
@@ -179,8 +179,8 @@ class PredictPlayerStats:
         processed_team_stats_df.to_sql(self.processed_player_stars_table_name, self.engine, if_exists='append')
 
     def predict_player_stat(self):
-        reshaped_numpy_array = numpy.reshape(self.latest_predictor_numpy_array, 3,1)
-        print(reshaped_numpy_array)
-        print('poisson outcome for {} is: {}'.format(self.player_name, self.poisson.predict(reshaped_numpy_array)))
-        # probability_in_numpy_array = self.poisson.predict_proba(self.latest_predictor_numpy_array)
-        # return {self.player_name: probability_in_numpy_array[0][0]}
+        #reshaped_numpy_array = numpy.reshape(self.latest_predictor_numpy_array, 3,1)
+        # print(reshaped_numpy_array)
+        # print('poisson outcome for {} is: {}'.format(self.player_name, self.poisson.predict(reshaped_numpy_array)))
+        probability_in_numpy_array = self.poisson.predict(self.pos_result.params, self.latest_predictor_numpy_array)
+        return {self.player_name: probability_in_numpy_array}

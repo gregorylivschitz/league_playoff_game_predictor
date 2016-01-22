@@ -13,4 +13,4 @@ print(predict.predict_on_single_game())
 
 #
 predict_player = PredictPlayerStats(engine, 'Doublelift', 'kills')
-# predict_player.predict_player_stat()
+print(predict_player.predict_player_stat())
