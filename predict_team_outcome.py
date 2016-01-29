@@ -176,6 +176,7 @@ class PredictTeamWin:
         game_list = []
         y_array_list = []
         for game in games:
+            print(game)
             game_predictor_stats = []
             if not (numpy.isnan(game['csum_prev_min_minions_killed']) and numpy.isnan(game['csum_prev_min_total_gold'])):
                 for predictor_stat in self.predictor_stats:

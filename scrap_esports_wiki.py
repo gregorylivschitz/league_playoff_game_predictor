@@ -78,20 +78,20 @@ def get_tournament_from_web_page(web_page):
         name, region, year, season = tournament_path.split('/')
         year = remove_season(year)
         season = remove_season(season)
-        tournament = Tournament(name=name, region=region, year=int(year), season=season)
+        tournament = get_or_create(session, Tournament, name=name, region=region, year=int(year), season=season)
     elif any(region in tournament_path for region in regions):
         region, year, season = tournament_path.split('/')
         name = region
         year = remove_season(year)
         season = remove_season(season)
-        tournament =Tournament(name=name, region=region, year=int(year), season=season)
+        tournament = get_or_create(session, Tournament, name=name, region=region, year=int(year), season=season)
     elif 'World_Championship' in tournament_path:
         tournament_split = tournament_path.split('_')
         year = tournament_split[0]
         name = '{}_{}'.format(tournament_split[2], tournament_split[3])
         region = 'ALL'
         season = tournament_split[2]
-        tournament = Tournament(name=name, region=region, year=int(year), season=season)
+        tournament = get_or_create(session,Tournament, name=name, region=region, year=int(year), season=season)
     return tournament
 
 
@@ -237,11 +237,15 @@ def get_games_from_webpage(web_page=None):
             retrieved_tournament.data_sources.append(retrieved_data_source)
             session.add(retrieved_data_source)
             response = requests.get(web_page)
-            text = response.text
-            soup = BeautifulSoup(text)
-            retrieved_data_source = process_data_source(soup, retrieved_data_source, retrieved_tournament)
-            session.commit()
-            print('Webpage {} has been processed'.format(web_page))
+            if response.status_code != 404:
+                text = response.text
+                soup = BeautifulSoup(text)
+                retrieved_data_source = process_data_source(soup, retrieved_data_source, retrieved_tournament)
+                session.commit()
+                print('Webpage {} has been processed'.format(web_page))
+            else:
+                print('Could not process webpage {} it was a 404 rolling back now'.format(web_page))
+                session.rollback()
         except (exc.SQLAlchemyError, IndexError, ValueError) as e:
             print('There was a problem loading the webpage {} rolling back now'.format(web_page))
             print('The exception is {}'.format(e))
@@ -260,22 +264,19 @@ def get_games_from_webpages(base_page, pages):
     return data_sources
 
 
-
-
-
 def main():
     get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/2015_Season_World_Championship/Scoreboards',
                            pages=['', '/Group_Stage/Group_B', '/Group_Stage/Group_C', '/Group_Stage/Group_D', '/Bracket_Stage'])
     get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/League_Championship_Series/North_America/2016_Season/Spring_Season/Scoreboards',
-                           pages=[''])
+                           pages=['', '/Week_2'])
     get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/League_Championship_Series/Europe/2016_Season/Spring_Season/Scoreboards',
-                           pages=[''])
+                           pages=['', '/Week_2'])
     get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/LCK/2016_Season/Spring_Season/Scoreboards',
-                           pages=[''])
+                           pages=['', '/Week_2'])
     # get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/LPL/2016_Season/Spring_Season/Scoreboards',
-    #                        pages=[''])
+    #                        pages=['', '/Week_2'])
     get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/LMS/2016_Season/Spring_Season/Scoreboards',
-                           pages=[''])
+                           pages=['', '/Week_2'])
 
 if __name__ == "__main__":
     main()

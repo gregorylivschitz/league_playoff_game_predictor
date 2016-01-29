@@ -81,9 +81,9 @@ class PredictPlayerStats:
     def _get_game_by_ids(self, game_ids):
         return self.session.query(Game).filter(Game.id.in_(game_ids))
 
-    def _get_player_id_by_player_name(self, team_name):
-        team = self.session.query(Player).filter(Player.name.__eq__(team_name))
-        return team[0].id
+    def _get_player_id_by_player_name(self, player_name):
+        player = self.session.query(Player).filter(Player.name.__eq__(player_name))
+        return player[0].id
 
     def _get_processed_player_stats_in_df(self):
         game_ids = self._get_game_ids_from_database()
