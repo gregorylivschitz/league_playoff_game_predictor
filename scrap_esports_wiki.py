@@ -119,6 +119,12 @@ def parse_player_stats(game, team, player_stat_table):
     row = rows[0]
     cols = row.find_all('td')
     name = parse_column_player_name(cols[1])
+    if session.query(Player).filter_by(name=name).first() is None:
+        try:
+            role, image = get_player_role_and_image(name, team)
+            player = get_or_create(session, Player, name=name, role=role, image=image)
+        except AttributeError:
+            print('unable to find role and image for player {} from team {}'.format(name, team.name))
     player = get_or_create(session, Player, name=name)
     champion_played = parse_champion_name(cols[0])
     # Page was updated to include tokens, so the location of the stats were messed up, this handles both types of pages.
@@ -144,6 +150,31 @@ def parse_player_stats(game, team, player_stat_table):
     game.player_stats.append(player_stat)
     team.player_stats.append(player_stat)
     return player_stat
+
+
+def get_player_role_and_image(player_name, team):
+    response = requests.get('http://lol.esportspedia.com/wiki/{}'.format(player_name))
+    text = response.text
+    soup = BeautifulSoup(text)
+    # sometimes the page has 2 or more people with the same name in that case we need to select the correct one
+    # based on the team_name.
+    try:
+        image = soup.find('img')['src']
+        role = soup.find('th', text=re.compile('Role:')).parent.find('td').contents[0].strip()
+    except AttributeError:
+        # sometimes there is an added image in that case we need to go up one more level.
+        try:
+            link_to_player_page = \
+                soup.find(text=re.compile(team.name, re.IGNORECASE)).parent.parent.find_all('a')[1]['href']
+        except IndexError:
+            link_to_player_page = \
+                soup.find(text=re.compile(team.name, re.IGNORECASE)).parent.parent.parent.find_all('a')[1]['href']
+        response = requests.get('http://lol.esportspedia.com/{}'.format(link_to_player_page))
+        text = response.text
+        soup = BeautifulSoup(text)
+        image = soup.find('img')['src']
+        role = soup.find('th', text=re.compile('Role:')).parent.find('td').contents[0].strip()
+    return role, image
 
 # color, game_table to
 # {'color': 'blue', 'assists': 37, 'deaths': 5, 'kills': 16,'minions_killed': 783}
@@ -268,15 +299,15 @@ def main():
     get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/2015_Season_World_Championship/Scoreboards',
                            pages=['', '/Group_Stage/Group_B', '/Group_Stage/Group_C', '/Group_Stage/Group_D', '/Bracket_Stage'])
     get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/League_Championship_Series/North_America/2016_Season/Spring_Season/Scoreboards',
-                           pages=['', '/Week_2'])
+                           pages=['', '/Week_2', '/Week_3', '/Week_4', '/Week_5'])
     get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/League_Championship_Series/Europe/2016_Season/Spring_Season/Scoreboards',
-                           pages=['', '/Week_2'])
+                           pages=['', '/Week_2', '/Week_3', '/Week_4', '/Week_5'])
     get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/LCK/2016_Season/Spring_Season/Scoreboards',
-                           pages=['', '/Week_2'])
+                           pages=['', '/Week_2', '/Week_3', '/Week_4', '/Week_5'])
     # get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/LPL/2016_Season/Spring_Season/Scoreboards',
-    #                        pages=['', '/Week_2'])
+    #                        pages=['', '/Week_2', '/Week_3', '/Week_4', '/Week_5'])
     get_games_from_webpages(base_page='http://lol.esportspedia.com/wiki/LMS/2016_Season/Spring_Season/Scoreboards',
-                           pages=['', '/Week_2'])
+                           pages=['', '/Week_2', '/Week_3', '/Week_4', '/Week_5'])
 
 if __name__ == "__main__":
     main()

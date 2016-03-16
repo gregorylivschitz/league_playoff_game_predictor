@@ -88,6 +88,8 @@ class Player(Base, TimestampMixin):
     __tablename__ = 'player'
     id = Column(Integer, primary_key=True)
     name = Column(String)
+    role = Column(String)
+    image = Column(String)
     external_id = Column(String)
     player_stats = relationship("PlayerStats", backref='player')
 
@@ -103,7 +105,7 @@ class TeamStats(Base, TimestampMixin):
     minions_killed = Column(Integer)
     assists = Column(Integer)
     kills = Column(Integer)
-    gold = Column(Numeric)
+    gold = Column(Integer)
     barons = Column(Integer)
     dragons = Column(Integer)
     turrets = Column(Integer)
@@ -126,7 +128,7 @@ class PlayerStats(Base, TimestampMixin):
     kills = Column(Integer)
     deaths = Column(Integer)
     assists = Column(Integer)
-    gold = Column(Numeric)
+    gold = Column(Integer)
     minions_killed = Column(Integer)
     game_id = Column(Integer, ForeignKey('game.id'))
     team_id = Column(Integer, ForeignKey('team.id'))

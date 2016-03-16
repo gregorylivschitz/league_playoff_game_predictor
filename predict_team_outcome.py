@@ -131,10 +131,13 @@ class PredictTeamWin:
     def _process_team_stats_df(self, team_stats_df):
         team_stats_df = team_stats_df.sort(['game_id', 'team_id'])
         key_stats = ['game_number', 'game_length_minutes'] + (list(self.key_stats))
+        team_stats_df['clean_kills'] = team_stats_df['kills']
+        team_stats_df['clean_assists'] = team_stats_df['assists']
+        team_stats_df.ix[team_stats_df.clean_kills==0, 'clean_kills'] = 1
         team_stats_df['k_a'] = \
             team_stats_df['kills'] + team_stats_df['assists']
         team_stats_df['a_over_k'] = \
-            team_stats_df['assists'] / team_stats_df['kills']
+            team_stats_df['assists'] / team_stats_df['clean_kills']
         team_grouped_by_game_id_df = team_stats_df.groupby(['game_id'], as_index=False).sum()
         team_grouped_by_game_id_df.rename(columns=lambda column_name: column_name if column_name == 'game_id' else
         '{}_for_game'.format(column_name), inplace=True)
@@ -176,7 +179,6 @@ class PredictTeamWin:
         game_list = []
         y_array_list = []
         for game in games:
-            print(game)
             game_predictor_stats = []
             if not (numpy.isnan(game['csum_prev_min_minions_killed']) and numpy.isnan(game['csum_prev_min_total_gold'])):
                 for predictor_stat in self.predictor_stats:

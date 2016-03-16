@@ -11,3 +11,16 @@ ALTER SEQUENCE game_id_seq RESTART WITH 9000;
 --drop table processed_player_stats_df;
 --drop table team_stats_df;
 --drop table player_stats_df;
+
+
+update player
+set role = 'AD'
+where name='LilV';
+
+update player
+set role = 'Top'
+where name in ('Julian', 'Steve', 'Solo');
+
+update player
+set role = 'Jungler'
+where name='Moon';
