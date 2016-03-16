@@ -19,7 +19,7 @@ where name='LilV';
 
 update player
 set role = 'Top'
-where name in ('Julian', 'Steve', 'Solo');
+where name in ('Julian', 'Steve', 'Solo', 'Steak');
 
 update player
 set role = 'Jungler'
